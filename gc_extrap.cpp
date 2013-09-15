@@ -194,7 +194,6 @@ load_values_MR(const bool VERBOSE,
 	       const string input_file_name, 
 	       const size_t bin_size,
 	       size_t max_width,
-	       double &avg_bins_per_read,
 	       vector<double> &values) {
 
   srand(time(0) + getpid());
@@ -234,9 +233,6 @@ load_values_MR(const bool VERBOSE,
 	PQ.push(splitGRs[i]);
       }
 
-
-    avg_bins_per_read = avg_bins_per_read*(n_reads - 1)/n_reads 
-      + static_cast<double>(splitGRs.size())/n_reads;
    // remove Genomic Regions from the priority queue
     if(splitGRs.size() > 0){
       while(!PQ.empty() && 
@@ -289,7 +285,6 @@ static size_t
 load_values_GR(const string input_file_name, 
 	       const size_t bin_size,
 	       const size_t max_width,
-	       double &avg_bins_per_read,
 	       vector<double> &values) {
 
   srand(time(0) + getpid());
@@ -317,9 +312,6 @@ load_values_GR(const string input_file_name,
    for(size_t i = 0; i < splitGRs.size(); i++){
      PQ.push(splitGRs[i]);
    }
-   // update average bins per read
-   avg_bins_per_read = avg_bins_per_read*(n_reads - 1)/n_reads 
-     + static_cast<double>(splitGRs.size())/n_reads;
 
    // remove Genomic Regions from the priority queue
    while(!PQ.empty() && 
@@ -871,16 +863,15 @@ main(const int argc, const char **argv) {
       cerr << "LOADING READS" << endl;
 
     if(NO_SEQUENCE)
-      n_reads = load_values_GR(input_file_name, bin_size, max_width,
-				  avg_bins_per_read, values);
+      n_reads = load_values_GR(input_file_name, bin_size, max_width, values);
     else 
-      n_reads = load_values_MR(VERBOSE, input_file_name, bin_size, max_width, 
-				  avg_bins_per_read, values);
+      n_reads = load_values_MR(VERBOSE, input_file_name, bin_size, max_width, values);
 
     
     const double total_bins = accumulate(values.begin(), values.end(), 0.0);
 
-    double bin_step_size = read_step_size/bin_size;
+    avg_bins_per_read = total_bins/n_reads;
+    double bin_step_size = read_step_size*avg_bins_per_read;
     // for large initial experiments need to adjust step size
     // otherwise small relative steps do not account for variance
     // in extrapolation
@@ -890,7 +881,7 @@ main(const int argc, const char **argv) {
 	 cerr << "ADJUSTED_STEP_SIZE = " << bin_step_size << endl;
     }
     // recorrect the read step size
-    read_step_size = bin_step_size*bin_size;
+    read_step_size = bin_step_size/avg_bins_per_read;
        
     const size_t max_observed_count = 
       static_cast<size_t>(*std::max_element(values.begin(), values.end()));
