@@ -82,7 +82,7 @@ quotdiff_algorithm(const vector<double> &ps_coeffs, vector<double> &cf_coeffs) {
   vector< vector<double> > q_table(depth, vector<double>(depth+1, 0.0)); //an array that is depth x depth+1
   vector< vector<double> > e_table(depth, vector<double>(depth+1, 0.0));
 
-  for (size_t j = 0; i < depth-1; j++) //fill first position in the q_table with a vector that holds the ratio of power series coeff Cn to Cn-1
+  for (size_t j = 0; j < depth-1; j++) //fill first position in the q_table with a vector that holds the ratio of power series coeff Cn to Cn-1
     q_table[1][j] = ps_coeffs[j + 1]/ps_coeffs[j];
   
   for (size_t j = 0; j < depth-1; j++) //fill first position in e_table with the quotient difference algorithm relation 
