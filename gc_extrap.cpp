@@ -194,7 +194,7 @@ load_values_MR(const bool VERBOSE,
 	       const string input_file_name, 
 	       const size_t bin_size,
 	       size_t max_width,
-	       vector<double> &values) {
+	       vector<double> &vals_hist) {
 
   srand(time(0) + getpid());
   Runif runif(rand());
@@ -213,7 +213,7 @@ load_values_MR(const bool VERBOSE,
   size_t n_reads = 0;
   size_t n_bins = 0;
   GenomicRegion curr_gr, prev_gr;
-  values.push_back(1.0);
+  size_t current_count = 1;
   do {
 
     if(mr.r.get_width() > max_width){
@@ -247,10 +247,19 @@ load_values_MR(const bool VERBOSE,
 	    cerr << "previous:\t" << prev_gr << endl;
 	    throw SMITHLABException("split reads unsorted");
 	  }
-	  if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start())
-	    values.push_back(1.0);
+	  // next genomic region is not the same as last, update histogram
+	  if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start()){
+	    // count is too big, resize histogram
+	    if(vals_hist.size() < current_count + 1)
+	      vals_hist.resize(current_count + 1, 0.0);
+
+	    // increment histogram at current count
+	    ++vals_hist[current_count];
+	    current_count = 1;
+	  }
+	  // next genomic region is same as last, increment count
 	  else 
-	    values.back()++;
+	    ++current_count;
 	}
 	prev_gr.swap(curr_gr);
       }
@@ -269,11 +278,20 @@ load_values_MR(const bool VERBOSE,
       cerr << "previous:\t" << prev_gr << endl;
       throw SMITHLABException("split reads unsorted");
     }
-    if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start())
-      values.push_back(1.0);
+	  // next genomic region is not the same as last, update histogram
+    if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start()){
+	    // count is too big, resize histogram
+      if(vals_hist.size() < current_count + 1)
+	vals_hist.resize(current_count + 1, 0.0);
+
+	    // increment histogram at current count
+      ++vals_hist[current_count];
+      current_count = 1;
+    }
+	  // next genomic region is same as last, increment count
     else 
-      values.back()++;
-   
+      ++current_count;
+
     prev_gr.swap(curr_gr);
   }
 
@@ -285,7 +303,7 @@ static size_t
 load_values_GR(const string input_file_name, 
 	       const size_t bin_size,
 	       const size_t max_width,
-	       vector<double> &values) {
+	       vector<double> &vals_hist) {
 
   srand(time(0) + getpid());
   Runif runif(rand());
@@ -304,7 +322,7 @@ load_values_GR(const string input_file_name,
  // prev and current Genomic Regions to compare
  GenomicRegion curr_gr, prev_gr;
  size_t n_reads = 0;
- values.push_back(1.0);
+ size_t current_count = 1;
  do {
    vector<GenomicRegion> splitGRs;
    SplitGenomicRegion(inputGR, runif, bin_size, splitGRs);
@@ -313,25 +331,36 @@ load_values_GR(const string input_file_name,
      PQ.push(splitGRs[i]);
    }
 
+   if(splitGRs.size() > 0){
    // remove Genomic Regions from the priority queue
-   while(!PQ.empty() && 
-	 GenomicRegionOrderChecker::is_ready(PQ, splitGRs.back(), max_width)){
-     curr_gr = PQ.top();
-     PQ.pop();
+     while(!PQ.empty() && 
+	   GenomicRegionOrderChecker::is_ready(PQ, splitGRs.back(), max_width)){
+       curr_gr = PQ.top();
+       PQ.pop();
+ // only compare if the previous is not null (in the 1st iteration)
+       if(!GenomicRegionIsNull(prev_gr)){
+	 if(curr_gr.same_chrom(prev_gr) && curr_gr.get_start() < prev_gr.get_start()){
+	   cerr << "current:\t" << curr_gr << endl;
+	   cerr << "previous:\t" << prev_gr << endl;
+	   throw SMITHLABException("split reads unsorted");
+	 }
+ 
+	  // next genomic region is not the same as last, update histogram
+	 if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start()){
+	    // count is too big, resize histogram
+	   if(vals_hist.size() < current_count + 1)
+	     vals_hist.resize(current_count + 1, 0.0);
 
-     // only compare if the previous is not null (in the 1st iteration)
-     if(prev_gr.get_chrom() != "(NULL)"){
-       if(curr_gr.same_chrom(prev_gr) && curr_gr.get_start() < prev_gr.get_start()){
-	 cerr << "current:\t" << curr_gr << endl;
-	 cerr << "previous:\t" << prev_gr << endl;
-	 throw SMITHLABException("split reads unsorted");
+	    // increment histogram at current count
+	   ++vals_hist[current_count];
+	   current_count = 1;
+	 }
+	  // next genomic region is same as last, increment count
+	 else 
+	   ++current_count;
        }
-       if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start())
-	 values.push_back(1.0);
-       else 
-	 values.back()++;
+       prev_gr.swap(curr_gr);
      }
-     prev_gr.swap(curr_gr);
    }
 
    n_reads++;
@@ -349,10 +378,19 @@ load_values_GR(const string input_file_name,
      cerr << "previous:\t" << prev_gr << endl;
      throw SMITHLABException("split reads unsorted");
    }
-   if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start())
-     values.push_back(1.0);
+	  // next genomic region is not the same as last, update histogram
+   if(!curr_gr.same_chrom(prev_gr) || curr_gr.get_start() != prev_gr.get_start()){
+	    // count is too big, resize histogram
+     if(vals_hist.size() < current_count + 1)
+       vals_hist.resize(current_count + 1, 0.0);
+
+	    // increment histogram at current count
+     ++vals_hist[current_count];
+     current_count = 1;
+   }
+	  // next genomic region is same as last, increment count
    else 
-     values.back()++;
+     ++current_count;
    
    prev_gr.swap(curr_gr);
  }
@@ -436,7 +474,7 @@ check_yield_estimates(const vector<double> &estimates) {
 }
 
 void
-variance_bootstrap(const bool VERBOSE, const vector<double> &orig_values, 
+variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist, 
 		   const size_t bootstraps, const size_t orig_max_terms, 
 		   const int diagonal, const double step_size, 
 		   const double max_extrapolation, const double dupl_level, 
@@ -452,24 +490,18 @@ variance_bootstrap(const bool VERBOSE, const vector<double> &orig_values,
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
   gsl_rng_set(rng, rand()); 
 
-  const size_t max_observed_count = 
-    static_cast<size_t>(*std::max_element(orig_values.begin(), 
-					  orig_values.end()));
-    
-  vector<double> orig_hist(max_observed_count + 1, 0.0);
-  for (size_t i = 0; i < orig_values.size(); ++i)
-    ++orig_hist[static_cast<size_t>(orig_values[i])];
-  
-  const double vals_sum = accumulate(orig_values.begin(), orig_values.end(), 0.0);
+  double vals_sum = 0.0;
+  for(size_t i = 0; i < orig_hist.size(); i++)
+    vals_sum += orig_hist[i]*i;
   const double max_val = max_extrapolation/vals_sum;
+  const double vals_size = accumulate(orig_hist.begin(), orig_hist.end(), 0.0);
   
   for (size_t iter = 0; 
        (iter < max_iter && bootstrap_estimates.size() < bootstraps); ++iter) {
     
     vector<double> yield_vector;
     vector<double> hist;
-    resample_hist(rng, orig_hist, vals_sum,
-		  static_cast<double>(orig_values.size()), hist);
+    resample_hist(rng, orig_hist, vals_sum, vals_size, hist);
 
     const double initial_distinct = accumulate(hist.begin(), hist.end(), 0.0);
     
@@ -853,7 +885,7 @@ main(const int argc, const char **argv) {
     const string input_file_name = leftover_args.front();
     /******************************************************************/
     
-    vector<double> values;
+    vector<double> coverage_hist;
     size_t n_reads = 0;
 
     double avg_bins_per_read = 0.0;
@@ -863,12 +895,14 @@ main(const int argc, const char **argv) {
       cerr << "LOADING READS" << endl;
 
     if(NO_SEQUENCE)
-      n_reads = load_values_GR(input_file_name, bin_size, max_width, values);
+      n_reads = load_values_GR(input_file_name, bin_size, max_width, coverage_hist);
     else 
-      n_reads = load_values_MR(VERBOSE, input_file_name, bin_size, max_width, values);
+      n_reads = load_values_MR(VERBOSE, input_file_name, bin_size, max_width, coverage_hist);
 
-    
-    const double total_bins = accumulate(values.begin(), values.end(), 0.0);
+    double total_bins = 0.0;
+    for(size_t i = 0; i < coverage_hist.size(); i++)
+      total_bins += coverage_hist[i]*i;
+    const double distinct_bins = accumulate(coverage_hist.begin(), coverage_hist.end(), 0.0);
 
     avg_bins_per_read = total_bins/n_reads;
     double bin_step_size = read_step_size*avg_bins_per_read;
@@ -883,30 +917,25 @@ main(const int argc, const char **argv) {
     // recorrect the read step size
     read_step_size = bin_step_size/avg_bins_per_read;
        
-    const size_t max_observed_count = 
-      static_cast<size_t>(*std::max_element(values.begin(), values.end()));
-    
-    // BUILD THE HISTOGRAM
-    vector<double> counts_hist(max_observed_count + 1, 0.0);
-    for (size_t i = 0; i < values.size(); ++i)
-      ++counts_hist[static_cast<size_t>(values[i])];
-    
+    const size_t max_observed_count = coverage_hist.size() - 1;
+        
     if (VERBOSE)
       cerr << "TOTAL READS         = " << n_reads << endl
 	   << "STEP SIZE           = " << read_step_size << endl
 	   << "TOTAL BINS          = " << total_bins << endl
-	   << "DISTINCT BINS       = " << values.size() << endl
+	   << "BINS PER READ       = " << avg_bins_per_read << endl
+	   << "DISTINCT BINS       = " << distinct_bins << endl
 	   << "TOTAL BASES         = " << total_bins*bin_size << endl
-	   << "TOTAL COVERED BASES = " << values.size()*bin_size << endl
+	   << "TOTAL COVERED BASES = " << distinct_bins*bin_size << endl
 	   << "MAX COUNT           = " << max_observed_count << endl
-	   << "COUNTS OF 1         = " << counts_hist[1] << endl;
+	   << "COUNTS OF 1         = " << coverage_hist[1] << endl;
     
     if (VERBOSE) {
       // OUTPUT THE ORIGINAL HISTOGRAM
-      cerr << "OBSERVED BIN COUNTS (" << counts_hist.size() << ")" << endl;
-      for (size_t i = 0; i < counts_hist.size(); i++)
-	if (counts_hist[i] > 0)
-	  cerr << i << '\t' << counts_hist[i] << endl;
+      cerr << "OBSERVED BIN COUNTS (" << coverage_hist.size() << ")" << endl;
+      for (size_t i = 0; i < coverage_hist.size(); i++)
+	if (coverage_hist[i] > 0)
+	  cerr << i << '\t' << coverage_hist[i] << endl;
       cerr << endl;
     }
 
@@ -922,8 +951,8 @@ main(const int argc, const char **argv) {
       cerr << "[ESTIMATING YIELD CURVE]" << endl;
     vector<double> yield_estimates;
     bool SINGLE_ESTIMATE_SUCCESS = 
-      single_estimates(VERBOSE, counts_hist, orig_max_terms, diagonal,
-		       bin_step_size, max_extrapolation, yield_estimates);
+      single_estimates(VERBOSE, coverage_hist, orig_max_terms, diagonal,
+		       bin_step_size, max_extrapolation*avg_bins_per_read, yield_estimates);
 
 
    if(SINGLE_ESTIMATE){
@@ -954,7 +983,7 @@ main(const int argc, const char **argv) {
         
      vector<vector <double> > bootstrap_estimates;
      vector<double> Ylevel_estimates;
-     variance_bootstrap(VERBOSE, values,  bootstraps, orig_max_terms,
+     variance_bootstrap(VERBOSE, coverage_hist,  bootstraps, orig_max_terms,
 			 diagonal, bin_step_size, max_extrapolation, dupl_level,
 			 tolerance, max_iter, Ylevel_estimates, 
 			 bootstrap_estimates);
