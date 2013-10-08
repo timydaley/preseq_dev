@@ -398,42 +398,32 @@ load_values_GR(const string input_file_name,
  return n_reads;
 }
 
-
+// vals_hist[j] = n_{j} = # (counts = j)
+// vals_hist_distinct_counts[k] = kth index j s.t. vals_hist[j] > 0
+// stores kth index of vals_hist that is positive
+// distinct_counts_hist[k] = vals_hist[vals_hist_distinct_counts[k]]  
+// stores the kth positive value of vals_hist
 void
-resample_hist(const gsl_rng *rng, const vector<double> &vals_hist,
-	      const double total_sampled_reads,
-	      double expected_sample_size,
-	      vector<double> &sample_hist) {
+resample_hist(const gsl_rng *rng, const vector<size_t> &vals_hist_distinct_counts,
+	      const vector<double> &distinct_counts_hist,
+	      vector<double> &out_hist) {
   
-  const size_t hist_size = vals_hist.size();
-  const double vals_mean = total_sampled_reads/expected_sample_size;
+  vector<unsigned int> sample_distinct_counts_hist(distinct_counts_hist.size(), 0);
+
+  const unsigned int distinct = 
+    static_cast<unsigned int>(accumulate(distinct_counts_hist.begin(), distinct_counts_hist.end(), 0.0));
   
-  sample_hist = vector<double>(hist_size, 0.0);
-  vector<unsigned int> curr_sample(hist_size);
-  double remaining = total_sampled_reads;
-  
-  while (remaining > 0) {
-    
-    // get a new sample
-    expected_sample_size = max(1.0, (remaining/vals_mean)/2.0);
-    gsl_ran_multinomial(rng, hist_size, 
-			static_cast<unsigned int>(expected_sample_size),
-			&vals_hist.front(), &curr_sample.front());
-    
-    // see how much we got
-    double inc = 0.0;
-    for (size_t i = 0; i < hist_size; ++i)
-      inc += i*curr_sample[i];
-    
-    // only add to histogram if sampled reads < remaining reads
-    if (inc <= remaining) {
-      for (size_t i = 0; i < hist_size; i++)
-	sample_hist[i] += static_cast<double>(curr_sample[i]);
-      // update the amount we still need to get
-      remaining -= inc;
-    }
-  }
+  gsl_ran_multinomial(rng, distinct_counts_hist.size(), distinct,
+		      &distinct_counts_hist.front(), 
+		      &sample_distinct_counts_hist.front());
+
+  out_hist.clear();
+  out_hist.resize(vals_hist_distinct_counts.back() + 1, 0.0);
+  for(size_t i = 0; i < sample_distinct_counts_hist.size(); i++)
+    out_hist[vals_hist_distinct_counts[i]] = 
+      static_cast<double>(sample_distinct_counts_hist[i]);
 }
+
 
 static double
 sample_count_distinct(const gsl_rng *rng,
@@ -474,13 +464,13 @@ check_yield_estimates(const vector<double> &estimates) {
 }
 
 void
-variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist, 
-		   const size_t bootstraps, const size_t orig_max_terms, 
-		   const int diagonal, const double step_size, 
-		   const double max_extrapolation, const double dupl_level, 
-		   const double tolerance, const size_t max_iter,
-		   vector<double> &Ylevel_estimates,
-		   vector< vector<double> > &bootstrap_estimates) {
+estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_hist, 
+		    const size_t bootstraps, const size_t orig_max_terms, 
+		    const int diagonal, const double step_size, 
+		    const double max_extrapolation, const double dupl_level, 
+		    const double tolerance, const size_t max_iter,
+		    vector<double> &Ylevel_estimates,
+		    vector< vector<double> > &bootstrap_estimates) {
   // clear returning vectors
   bootstrap_estimates.clear();
   
@@ -493,18 +483,33 @@ variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
   double vals_sum = 0.0;
   for(size_t i = 0; i < orig_hist.size(); i++)
     vals_sum += orig_hist[i]*i;
-  const double max_val = max_extrapolation/vals_sum;
-  const double vals_size = accumulate(orig_hist.begin(), orig_hist.end(), 0.0);
+
+  const double initial_distinct = accumulate(orig_hist.begin(), orig_hist.end(), 0.0);
+
+
+  vector<size_t> orig_hist_distinct_counts;
+  vector<double> distinct_orig_hist;
+  for(size_t i = 0; i < orig_hist.size(); i++){
+    if(orig_hist[i] > 0){
+      orig_hist_distinct_counts.push_back(i);
+      distinct_orig_hist.push_back(orig_hist[i]);
+    }
+  }
   
   for (size_t iter = 0; 
        (iter < max_iter && bootstrap_estimates.size() < bootstraps); ++iter) {
     
     vector<double> yield_vector;
     vector<double> hist;
-    resample_hist(rng, orig_hist, vals_sum, vals_size, hist);
-
-    const double initial_distinct = accumulate(hist.begin(), hist.end(), 0.0);
+    resample_hist(rng, orig_hist_distinct_counts, distinct_orig_hist, hist);
     
+    double sample_vals_sum = 0.0;
+    for(size_t i = 0; i < hist.size(); i++)
+      sample_vals_sum += i*hist[i];
+
+    const double sample_max_val = max_extrapolation/sample_vals_sum;
+    //   const double sample_val_step = step_size/sample_vals_sum;
+
     //resize boot_hist to remove excess zeros
     while (hist.back() == 0)
       hist.pop_back();
@@ -522,7 +527,7 @@ variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
     assert(umis.size() == static_cast<size_t>(vals_sum));
 
     // compute complexity curve by random sampling w/out replacement
-    size_t upper_limit = static_cast<size_t>(vals_sum);
+    size_t upper_limit = static_cast<size_t>(sample_vals_sum);
     size_t step = static_cast<size_t>(step_size);
     size_t sample = step;
     while(sample < upper_limit){
@@ -552,7 +557,7 @@ variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
     if (lower_cf.is_valid()){
       double sample_size = static_cast<double>(sample);
       while(sample_size < max_extrapolation){
-	double t = (sample_size - vals_sum)/vals_sum;
+	double t = (sample_size - sample_vals_sum)/sample_vals_sum;
 	assert(t >= 0.0);
 	yield_vector.push_back(initial_distinct + t*lower_cf(t));
 	sample_size += step_size;
@@ -562,7 +567,7 @@ variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
       if (check_yield_estimates(yield_vector)) {
 	bootstrap_estimates.push_back(yield_vector);
 	if (VERBOSE) cerr << '.';
-	Ylevel_estimates.push_back(lower_cf.Ylevel(hist, dupl_level, vals_sum, max_val, 
+	Ylevel_estimates.push_back(lower_cf.Ylevel(hist, dupl_level, sample_vals_sum, sample_max_val, 
 						   tolerance, max_iter));
       }
       else if (VERBOSE){
@@ -682,33 +687,6 @@ alpha_log_confint_multiplier(const double estimate,
   const double inv_norm_alpha = gsl_cdf_ugaussian_Qinv(alpha/2.0);
   return exp(inv_norm_alpha*
 	     sqrt(log(1.0 + variance/pow(estimate, 2))));
-}
-
-
-static void
-vector_ci(const vector<vector<double> > &bootstrap_estimates,
-	  const double ci_level, const vector<double> &yield_estimates,
-	  vector<double> &lower_ci_lognormal, 
-	  vector<double> &upper_ci_lognormal) {
-  
-  const double alpha = 1.0 - ci_level;
-  assert(!bootstrap_estimates.empty());
-  
-  const size_t n_est = bootstrap_estimates.size();
-  vector<double> estimates_row(bootstrap_estimates.size(), 0.0);
-  for (size_t i = 0; i < bootstrap_estimates[0].size(); i++) {
-    
-    // estimates is in wrong order, work locally on const val
-    for (size_t k = 0; k < n_est; ++k)
-      estimates_row[k] = bootstrap_estimates[k][i];
-    
-    // sort to get confidence interval
-    const double variance = gsl_stats_variance(&estimates_row[0], 1, n_est);
-    const double confint_mltr = 
-      alpha_log_confint_multiplier(yield_estimates[i], variance, alpha);
-    lower_ci_lognormal.push_back(yield_estimates[i]/confint_mltr);
-    upper_ci_lognormal.push_back(yield_estimates[i]*confint_mltr);
-  }
 }
 
 static void
@@ -949,13 +927,13 @@ main(const int argc, const char **argv) {
 
     if(VERBOSE)
       cerr << "[ESTIMATING YIELD CURVE]" << endl;
-    vector<double> yield_estimates;
-    bool SINGLE_ESTIMATE_SUCCESS = 
-      single_estimates(VERBOSE, coverage_hist, orig_max_terms, diagonal,
-		       bin_step_size, max_extrapolation*avg_bins_per_read, yield_estimates);
-
-
    if(SINGLE_ESTIMATE){
+     vector<double> yield_estimates;
+     bool SINGLE_ESTIMATE_SUCCESS = 
+       single_estimates(VERBOSE, coverage_hist, orig_max_terms, diagonal,
+			bin_step_size, max_extrapolation*avg_bins_per_read, yield_estimates);
+
+
       // IF FAILURE, EXIT
       if(!SINGLE_ESTIMATE_SUCCESS)
 	throw SMITHLABException("SINGLE ESTIMATE FAILED, NEED TO RUN FULL MODE FOR ESTIMATES");
@@ -983,7 +961,7 @@ main(const int argc, const char **argv) {
         
      vector<vector <double> > bootstrap_estimates;
      vector<double> Ylevel_estimates;
-     variance_bootstrap(VERBOSE, coverage_hist,  bootstraps, orig_max_terms,
+     estimates_bootstrap(VERBOSE, coverage_hist,  bootstraps, orig_max_terms,
 			 diagonal, bin_step_size, max_extrapolation, dupl_level,
 			 tolerance, max_iter, Ylevel_estimates, 
 			 bootstrap_estimates);
@@ -992,19 +970,11 @@ main(const int argc, const char **argv) {
        cerr << "[COMPUTING CONFIDENCE INTERVALS]" << endl;
 
     // yield ci    
-     vector<double> yield_upper_ci_lognormal, yield_lower_ci_lognormal,
-       yield_upper_ci_quantile, yield_lower_ci_quantile;
+     vector<double> yield_estimates, yield_upper_ci_lognormal, yield_lower_ci_lognormal;
 
-     if(!SINGLE_ESTIMATE_SUCCESS){
 	// use bootstrap estimates to obtain median estimates
-       vector_median_ci(bootstrap_estimates, c_level, yield_estimates, 
-			yield_lower_ci_lognormal, yield_upper_ci_lognormal);
-     }
-     else{
-	// use single estimates as the expected complexity curve
-       vector_ci(bootstrap_estimates, c_level, yield_estimates, 
-		 yield_lower_ci_lognormal, yield_upper_ci_lognormal);
-     }
+     vector_median_ci(bootstrap_estimates, c_level, yield_estimates, 
+		      yield_lower_ci_lognormal, yield_upper_ci_lognormal);
       
     // Y50 median and ci
      double Ylevel_median = 0.0;

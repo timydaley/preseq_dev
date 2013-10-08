@@ -629,7 +629,7 @@ ContinuedFraction::extrapolate_yield_deriv(const vector<double> &counts_hist,
                                            const double step_size,
                                            vector<double> &saturation_estimates) const {
   saturation_estimates.clear();
-  saturation_estimates.push_back(counts_hist[1]/vals_sum);
+  //  saturation_estimates.push_back(counts_hist[1]/vals_sum);
   for(double t = step_size; t <= max_value; t += step_size)
     saturation_estimates.push_back((operator()(t) 
                                     + t*complex_deriv(t))/vals_sum);

@@ -1,10 +1,11 @@
-/*    bam2mr: program to BAM format to smithlab's MappedRead format
+/*    to-mr: a program for converting SAM and BAM format to MappedRead
+ *    format.
+ *    Currently supported mappers: bsmap, bismark.
  *
- *    Copyright (C) 2013 University of Southern California and
- *                       Andrew D. Smith and
- *                       Timothy Daley
+ *    Copyright (C) 2009-2012 University of Southern California and
+ *                            Andrew D. Smith
  *
- *    Authors: Andrew D. Smith & Timothy Daley 
+ *    Authors: Meng Zhou, Qiang Song, Andrew Smith
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the GNU General Public License as published by
@@ -20,122 +21,68 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <cmath>
+
 #include <string>
 #include <vector>
 #include <iostream>
-#include <iterator>
 #include <fstream>
-#include <algorithm>
-#include <numeric>
-#include <cassert>
-#include <sys/types.h>
-#include <unistd.h>
-
 #include <tr1/unordered_map>
 
 #include "OptionParser.hpp"
 #include "smithlab_utils.hpp"
 #include "smithlab_os.hpp"
-#include "MappedRead.hpp"
-
-#include "api/BamReader.h"
-#include "api/BamAlignment.h"
+#include "SAM.hpp"
 
 using std::string;
 using std::vector;
 using std::cout;
 using std::cerr;
 using std::endl;
-
-using std::tr1::unordered_map;
-
-using BamTools::BamAlignment;
-using BamTools::SamHeader;
-using BamTools::RefVector;
-using BamTools::BamReader;
-using BamTools::RefData;
-
-static void
-BamAlignmentToMappedRead(const unordered_map<size_t, string> &chrom_lookup,
-			 const BamAlignment &ba,
-			 MappedRead &mr) {
-
-  const unordered_map<size_t, string>::const_iterator 
-    the_chrom(chrom_lookup.find(ba.RefID));
-  if (the_chrom == chrom_lookup.end())
-    throw SMITHLABException("no chrom with id: " + toa(ba.RefID));
-  
-  const string chrom = the_chrom->second;
-  size_t start, end;
-  if(ba.Position + ba.InsertSize < 0){
-    start = ba.Position;
-    end = ba.Position - ba.InsertSize;
-  }
-  else{
-    start = std::min(ba.Position, ba.Position + ba.InsertSize);
-    end = std::max(ba.Position, ba.Position + ba.InsertSize);
-  }
-  const string name(ba.Name);
-  const float score = ba.MapQuality;
-  const char strand = (ba.IsReverseStrand() ? '-' : '+');
-  const string seq = ba.AlignedBases;
-  const string scr = ba.Qualities;
-  mr.r = GenomicRegion(chrom, start, end, name, score, strand);
-  mr.seq = seq;
-  mr.scr = scr;
-}
+using std::ifstream;
+using std::max;
+using std::min;
 
 
-
+/********Below are functions for merging pair-end reads********/
 static void
 fill_overlap(const bool pos_str, const MappedRead &mr, const size_t start, 
-	     const size_t end, const size_t offset, string &seq, string &scr) {
+             const size_t end, const size_t offset, string &seq, string &scr) {
   const size_t a = pos_str ? (start - mr.r.get_start()) : (mr.r.get_end() - end);
   const size_t b = pos_str ? (end -  mr.r.get_start()) : (mr.r.get_end() - start);
   copy(mr.seq.begin() + a, mr.seq.begin() + b, seq.begin() + offset);
   copy(mr.scr.begin() + a, mr.scr.begin() + b, scr.begin() + offset);
 }
 
-
-
-static bool
-merge_mates(const bool VERBOSE, const size_t range, const MappedRead &one, 
-	    const MappedRead &two, MappedRead &merged) {
+static void
+merge_mates(const size_t suffix_len, const size_t range,
+            const MappedRead &one, const MappedRead &two,
+            MappedRead &merged, int &len) {
   
   const bool pos_str = one.r.pos_strand();
-  const size_t overlap_start = std::max(one.r.get_start(), two.r.get_start());
-  const size_t overlap_end = std::min(one.r.get_end(), two.r.get_end());
+  const size_t overlap_start = max(one.r.get_start(), two.r.get_start());
+  const size_t overlap_end = min(one.r.get_end(), two.r.get_end());
 
   const size_t one_left = pos_str ? 
-    one.r.get_start() : std::max(overlap_end, one.r.get_start());
+    one.r.get_start() : max(overlap_end, one.r.get_start());
   const size_t one_right = 
-    pos_str ? std::min(overlap_start, one.r.get_end()) : one.r.get_end();
+    pos_str ? min(overlap_start, one.r.get_end()) : one.r.get_end();
   
   const size_t two_left = pos_str ? 
-    std::max(overlap_end, two.r.get_start()) : two.r.get_start();
+    max(overlap_end, two.r.get_start()) : two.r.get_start();
   const size_t two_right = pos_str ? 
-    two.r.get_end() : std::min(overlap_start, two.r.get_end());
+    two.r.get_end() : min(overlap_start, two.r.get_end());
+
+  len = pos_str ? (two_right - one_left) : (one_right - two_left);
   
-  const int len = pos_str ? (two_right - one_left) : (one_right - two_left);
- 
-   
   if(len < 0){
-    if(VERBOSE){
-      cerr << one << endl;
-      cerr << two << endl;
-      cerr << "len = " << len << endl;
-    } 
-    return false;
-  }
-  
-  if(!(one_left <= one_right && two_left <= two_right)){
     cerr << one << endl;
     cerr << two << endl;
   }
-
-  assert(one_left <= one_right && two_left <= two_right);
-  assert(overlap_start >= overlap_end || static_cast<size_t>(len) == 
-	 ((one_right - one_left) + (two_right - two_left) + (overlap_end - overlap_start)));
+  // assert(len > 0);
+  // assert(one_left <= one_right && two_left <= two_right);
+  // assert(overlap_start >= overlap_end || static_cast<size_t>(len) == 
+  //    ((one_right - one_left) + (two_right - two_left) + (overlap_end - overlap_start)));
   
   string seq(len, 'N');
   string scr(len, 'B');
@@ -172,54 +119,58 @@ merge_mates(const bool VERBOSE, const size_t range, const MappedRead &one,
   merged.seq = seq;
   merged.scr = scr;  
   const string name(one.r.get_name());
-  merged.r.set_name("FRAG:" + name.substr(0, name.size()));
-
-  return true;
-}
-
-static bool
-BamAlignmentPeToMappedRead(const bool VERBOSE,
-			   const unordered_map<size_t, string> &chrom_lookup,
-			   const BamAlignment &ba_1,
-			   const BamAlignment &ba_2, 
-			   const size_t max_frag_len,
-			   MappedRead &mr) {
-
-  MappedRead mr_1, mr_2, merged_mr;
-  BamAlignmentToMappedRead(chrom_lookup, ba_1, mr_1);
-  BamAlignmentToMappedRead(chrom_lookup, ba_2, mr_2);
-
-  return merge_mates(VERBOSE, max_frag_len, mr_1, mr_2, mr);
-
+  merged.r.set_name("FRAG:" + name.substr(0, name.size() - suffix_len));
 }
 
 inline static bool
-same_read(const BamAlignment &a, const BamAlignment &b) {
-  const string sa(a.Name);
-  const string sb(b.Name);
-  return std::equal(sa.begin(), sa.end(), sb.begin());
+same_read(const size_t suffix_len, 
+	  const MappedRead &a, const MappedRead &b) {
+  const string sa(a.r.get_name());
+  const string sb(b.r.get_name());
+  return std::equal(sa.begin(), sa.end() - suffix_len, sb.begin());
 }
 
-
+static void
+revcomp(MappedRead &mr) {
+  // set the strand to the opposite of the current value
+  mr.r.set_strand(mr.r.pos_strand() ? '-' : '+');
+  // reverse complement the sequence, and reverse the quality scores
+  revcomp_inplace(mr.seq);
+  std::reverse(mr.scr.begin(), mr.scr.end());
+}
+/********Above are functions for merging pair-end reads********/
 
 int 
-main(int argc, const char **argv)  {
+main(int argc, const char **argv) {
   try {
-
-    bool VERBOSE = false;
     string outfile;
-    size_t max_frag_len = 10000;
-      
+    string mapper = "general";
+    size_t MAX_SEGMENT_LENGTH = 1000;
+    size_t suffix_len = 1;
+    bool VERBOSE = false;
+    
     /****************** COMMAND LINE OPTIONS ********************/
-    OptionParser opt_parse(strip_path(argv[0]), 
-			   "convert paired end BAM format reads to mapped reads format");
-    opt_parse.add_opt("fraglen", 'L', "max fragment length", false, max_frag_len);
-    opt_parse.add_opt("verbose", 'v', "print more run info", false, VERBOSE);
-    opt_parse.add_opt("outfile", 'o', "output file name", false, outfile);
+    OptionParser opt_parse(strip_path(argv[0]),
+                           "Convert the SAM/BAM output from bsmap, "
+                           "bismark or bs_seeker to MethPipe mapped read format",
+                           "sam/bam_file");
+    opt_parse.add_opt("output", 'o', "Name of output file", 
+                      false, outfile);
+    opt_parse.add_opt("mapper", 'm',
+                      "Original mapper: bsmap, bismark, bsseeker, or general", 
+                      true, mapper);
+    opt_parse.add_opt("suff", 's', "read name suffix length (default: 1)",
+                      false, suffix_len); 
+    opt_parse.add_opt("max-frag", 'L', "maximum allowed insert size", 
+                      false, MAX_SEGMENT_LENGTH); 
+    opt_parse.add_opt("verbose", 'v', "print more information",
+                      false, VERBOSE);
+
     vector<string> leftover_args;
     opt_parse.parse(argc, argv, leftover_args);
-    if (argc == 1 || opt_parse.help_requested()) {
-      cerr << opt_parse.help_message() << endl;
+    if (argc < 3 || opt_parse.help_requested()) {
+      cerr << opt_parse.help_message() << endl
+           << opt_parse.about_message() << endl;
       return EXIT_SUCCESS;
     }
     if (opt_parse.about_requested()) {
@@ -230,75 +181,111 @@ main(int argc, const char **argv)  {
       cerr << opt_parse.option_missing_message() << endl;
       return EXIT_SUCCESS;
     }
-    if (leftover_args.size() != 1) {
-      cerr << "input file missing" << endl;
+    if (leftover_args.empty()) {
+      cerr << opt_parse.help_message() << endl;
       return EXIT_SUCCESS;
     }
-    const string infile(leftover_args.front());
+    const string mapped_reads_file = leftover_args.front();
     /****************** END COMMAND LINE OPTIONS *****************/
-    
-    BamReader reader;
-    reader.Open(infile);
-    
-    // Get header and reference
-    string header = reader.GetHeaderText();
-    RefVector refs = reader.GetReferenceData();
 
-    unordered_map<size_t, string> chrom_lookup;
-    for (size_t i = 0; i < refs.size(); ++i)
-      chrom_lookup[i] = refs[i].RefName;
-    
     std::ofstream of;
     if (!outfile.empty()) of.open(outfile.c_str());
     std::ostream out(outfile.empty() ? cout.rdbuf() : of.rdbuf());
-
-    BamAlignment bam_1, bam_2;
-    while (reader.GetNextAlignment(bam_1)) {
-      MappedRead mr;
-
-      // if the reads are a proper pair, get next alignment (should be the mate)
-      // and merge alignment
-      if(bam_1.IsPaired() && bam_1.IsMapped() && 
-	 bam_1.IsProperPair() && bam_1.IsPrimaryAlignment()){
-	do{
-	  reader.GetNextAlignment(bam_2);
-	} while (!(bam_2.IsPaired() && bam_2.IsMapped() && 
-		   bam_2.IsProperPair() && bam_2.IsPrimaryAlignment()));
-	// if the next read is not the mate, they will not have the same name
-	if(!same_read(bam_1, bam_2)){
-	  MappedRead mr_1, mr_2;
-	  BamAlignmentToMappedRead(chrom_lookup, bam_1, mr_1);
-	  BamAlignmentToMappedRead(chrom_lookup, bam_2, mr_2);
-	  const string sa(bam_1.Name);
-	  const string sb(bam_2.Name);
-	  cerr << sa << '\t' << mr_1 << endl;
-	  cerr << sb << '\t' << mr_2 << endl;
-	  throw SMITHLABException("Reads not sorted by name");
-	}
-	bool merge_success = BamAlignmentPeToMappedRead(VERBOSE, chrom_lookup, bam_1, bam_2, max_frag_len, mr);
-	if(merge_success)
-	  out << mr << endl;
-	/*
-	else{
-	    MappedRead mr_1, mr_2;
-	    BamAlignmentToMappedRead(chrom_lookup, bam_1, mr_1);
-	    BamAlignmentToMappedRead(chrom_lookup, bam_1, mr_2);
-	    cerr << mr_1 << endl;
-	    cerr << mr_2 << endl;
-	    throw SMITHLABException("Problem merging mates");
-	  }
-	*/
-      }
-      // if the read is not a proper pair, convert it mapped reads
-      else if(bam_1.IsMapped() && bam_1.IsPrimaryAlignment()){
-	BamAlignmentToMappedRead(chrom_lookup, bam_1, mr);
-	out << mr << endl;
-      }
-
-      // if the read is not mapped or is not primary alignment, do nothing
-
+    if (VERBOSE)
+    {
+      cerr << "Input file: " << mapped_reads_file << endl
+           << "Output file: " << (outfile.empty() ? "stdout" : outfile) << endl;
     }
-    reader.Close();
+
+    SAMReader sam_reader(mapped_reads_file, mapper);
+    std::tr1::unordered_map<string, SAMRecord> dangling_mates;
+   
+    size_t count = 0;
+    const size_t progress_step = 1000000;
+    SAMRecord samr;
+
+    while ((sam_reader >> samr, sam_reader.is_good()))
+    {
+      if(samr.is_primary && samr.is_mapped)
+	// only convert mapped and primary reads
+      {
+
+	if (samr.is_mapping_paired)
+        {
+
+	  const string read_name
+	    = samr.mr.r.get_name().substr(
+	      0, samr.mr.r.get_name().size() - suffix_len);
+	  if (dangling_mates.find(read_name) != dangling_mates.end())
+	    // other end is in dangling mates, merge the two mates
+          {
+	    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
+	    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+	    revcomp(samr.mr);
+
+	    MappedRead merged;
+	    int len = 0;
+	    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			dangling_mates[read_name].mr, samr.mr, merged, len);
+	    if (len > 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)) 
+	      out << merged << endl;
+	    else
+	      out << dangling_mates[read_name].mr << endl << samr.mr << endl;
+	    dangling_mates.erase(read_name);
+	  }
+	  else
+	  {
+
+	    dangling_mates[read_name] = samr;
+	  }
+
+          // dangling mates is too large, flush dangling_mates of reads
+	  // on different chroms and too far away 
+	  if (dangling_mates.size() > 5000)
+	  {
+	    using std::tr1::unordered_map;
+	    unordered_map<string, SAMRecord> tmp;
+	    for (unordered_map<string, SAMRecord>::iterator
+		   itr = dangling_mates.begin();
+		 itr != dangling_mates.end(); ++itr)
+	      if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
+		  || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
+		      && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
+		      samr.mr.r.get_start()))
+		{
+		  if (!itr->second.is_Trich) revcomp(itr->second.mr);
+		  out << itr->second.mr << endl;
+		}
+	      else
+		tmp[itr->first] = itr->second;
+	    
+	    std::swap(tmp, dangling_mates);
+	  }
+	}
+	else // unpaired, output read
+	{
+	  if (!samr.is_Trich) revcomp(samr.mr);
+	  out << samr.mr << endl;
+	}
+      }
+      ++count;
+
+
+      
+      if (VERBOSE && count % progress_step == 0)
+        cerr << "Processed " << count << " records" << endl;
+    }
+
+    // flushing dangling_mates of all remaining ends
+    while (!dangling_mates.empty()) {
+      if (!dangling_mates.begin()->second.is_Trich)
+        revcomp(dangling_mates.begin()->second.mr);
+      out << dangling_mates.begin()->second.mr << endl;
+      dangling_mates.erase(dangling_mates.begin());
+    }
+          
+    if (VERBOSE)
+      cerr << "Done." << endl;
   }
   catch (const SMITHLABException &e) {
     cerr << e.what() << endl;

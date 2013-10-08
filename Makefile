@@ -26,19 +26,23 @@ ifndef SMITHLAB_CPP
 SMITHLAB_CPP=$(ROOT)/smithlab_cpp/
 endif
 
+ifndef SAMTOOLS_DIR
+SAMTOOLS_DIR=$(ROOT)/samtools/
+endif
+
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
 PROGS =  gc_extrap lc_extrap c_curve mincount_c_curve count_extrap count_c_curve mincount_extrap saturation_extrap test_quad_replace bam2mr
-INCLUDEDIRS = $(SMITHLAB_CPP)
+INCLUDEDIRS = $(SMITHLAB_CPP) $(SAMTOOLS_DIR)
 INCLUDEARGS = $(addprefix -I,$(INCLUDEDIRS))
 
-LIBS += -lgsl -lgslcblas 
+LIBS += -lgsl -lgslcblas -lz
 
 CXX = g++
 CXXFLAGS = -Wall -fPIC -fmessage-length=50
 OPTFLAGS = -O2
-DEBUGFLAGS = -g -lefence -lpthread -L/home/cmb-01/as/andrewds/lib/
+DEBUGFLAGS = -g -lefence -lpthread -L/usr/local/lib/
 
 ifdef DEBUG
 CXXFLAGS += $(DEBUGFLAGS)
@@ -50,18 +54,29 @@ LIBS += -L$(BAMTOOLS_ROOT)/lib -lz -lbamtools
 CXXFLAGS += -DHAVE_BAMTOOLS
 endif
 
+
+
 ifdef OPT
 CXXFLAGS += $(OPTFLAGS)
 endif
 
 all: $(PROGS)
 
-$(PROGS): $(addprefix $(SMITHLAB_CPP)/, GenomicRegion.o smithlab_os.o \
-	smithlab_utils.o OptionParser.o MappedRead.o RNG.o)
+$(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
+          smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o)
 
-gc_extrap saturation_extrap lc_extrap count_extrap mincount_extrap: continued_fraction.o
+saturation_extrap lc_extrap count_extrap mincount_extrap: continued_fraction.o
 
 test_quad_replace: library_size_estimates.o newtons_method.o moment_sequence.o ZTNB.o
+
+bam2mr: $(addprefix $(SMITHLAB_CPP)/, MappedRead.o SAM.o \
+        smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o) \
+	$(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
+	faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
+
+gc_extrap: $(addprefix $(SMITHLAB_CPP)/, OptionParser.o smithlab_utils.o \
+           smithlab_os.o GenomicRegion.o MappedRead.o RNG.o) \
+           continued_fraction.o
 
 %.o: %.cpp %.hpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $< $(INCLUDEARGS)
