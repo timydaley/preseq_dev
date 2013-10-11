@@ -1051,6 +1051,10 @@ static void c_curve (const bool VERBOSE,
 
 
 
+
+
+
+
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
@@ -1700,8 +1704,10 @@ static int usage()
     cerr << "         gc_extrap        extrapolate genomic complexity";
     cerr << "\n\n";
     return 0;
-    
+ //   string input_file_name2 = "SRR726645.sort.mr";
+
 }
+    size_t upper_limit = 0;
 
 
 
