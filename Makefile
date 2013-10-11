@@ -63,11 +63,14 @@ endif
 all: $(PROGS)
 
 $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
-          smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o)
+          smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o RNG.o)
 
 preseq saturation_extrap lc_extrap count_extrap mincount_extrap: continued_fraction.o
 
+
 test_quad_replace: library_size_estimates.o newtons_method.o moment_sequence.o ZTNB.o
+
+preseq: $(addprefix $(SMITHLAB_CPP)/, MappedRead.o)
 
 bam2mr: $(addprefix $(SMITHLAB_CPP)/, MappedRead.o SAM.o \
         smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o) \
