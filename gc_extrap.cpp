@@ -524,7 +524,7 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
 	umi++;
       }
     }
-    assert(umis.size() == static_cast<size_t>(vals_sum));
+    assert(umis.size() == static_cast<size_t>(sample_vals_sum));
 
     // compute complexity curve by random sampling w/out replacement
     size_t upper_limit = static_cast<size_t>(sample_vals_sum);

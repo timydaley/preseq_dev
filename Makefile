@@ -26,14 +26,13 @@ ifndef SMITHLAB_CPP
 SMITHLAB_CPP=$(ROOT)/smithlab_cpp/
 endif
 
-ifndef SAMTOOLS_DIR
-SAMTOOLS_DIR=$(ROOT)/samtools/
+ifdef SAMTOOLS_DIR
+INCLUDEDIRS += $(SAMTOOLS_DIR)
 endif
-
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS =  gc_extrap lc_extrap mincount_c_curve count_extrap count_c_curve mincount_extrap saturation_extrap test_quad_replace preseq
+PROGS = preseq
 INCLUDEDIRS = $(SMITHLAB_CPP) $(SAMTOOLS_DIR)
 INCLUDEARGS = $(addprefix -I,$(INCLUDEDIRS))
 
@@ -48,12 +47,6 @@ ifdef DEBUG
 CXXFLAGS += $(DEBUGFLAGS)
 endif
 
-ifdef BAMTOOLS_ROOT
-INCLUDEDIRS += $(BAMTOOLS_ROOT)/include
-LIBS += -L$(BAMTOOLS_ROOT)/lib -lz -lbamtools
-CXXFLAGS += -DHAVE_BAMTOOLS
-endif
-
 
 
 ifdef OPT
@@ -65,21 +58,13 @@ all: $(PROGS)
 $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
           smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o RNG.o)
 
-preseq saturation_extrap lc_extrap count_extrap mincount_extrap: continued_fraction.o
+preseq: continued_fraction.o
 
-
-test_quad_replace: library_size_estimates.o newtons_method.o moment_sequence.o ZTNB.o
-
-preseq: $(addprefix $(SMITHLAB_CPP)/, MappedRead.o)
-
-bam2mr: $(addprefix $(SMITHLAB_CPP)/, MappedRead.o SAM.o \
-        smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o) \
-	$(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
-	faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
-
-gc_extrap: $(addprefix $(SMITHLAB_CPP)/, OptionParser.o smithlab_utils.o \
-           smithlab_os.o GenomicRegion.o MappedRead.o RNG.o) \
-           continued_fraction.o
+ifdef SAMTOOLS_DIR
+preseq: $(addprefix $(SMITHLAB_CPP)/, MappedRead.o SAM.o) \
+        $(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
+        faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
+endif
 
 %.o: %.cpp %.hpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $< $(INCLUDEARGS)
