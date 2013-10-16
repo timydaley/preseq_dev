@@ -479,6 +479,7 @@ load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
   }
 
  return n_reads;
+
 }
 
 /*
@@ -700,6 +701,7 @@ sample_count_distinct(const gsl_rng *rng,
     
     return count;
 }
+
 
 // check if estimates are finite, increasing, and concave
 static bool
@@ -1271,7 +1273,6 @@ static void c_curve (const bool VERBOSE,
 
 
 
-
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
@@ -1281,7 +1282,7 @@ static void c_curve (const bool VERBOSE,
 /////
 
 
-/**************** FOR CLARITY BELOW WHEN COMPARING READS **************/
+/**************** FOR CLARITY BELOW WHEN COMPARING READS *************
 
 static inline bool
 chrom_greater(const GenomicRegion &a, const GenomicRegion &b) {
@@ -1300,7 +1301,7 @@ end_greater(const GenomicRegion &a, const GenomicRegion &b) {
     return a.get_end() > b.get_end();
 }
 /******************************************************************************/
-
+/*
 
 struct GenomicRegionOrderChecker {
     bool operator()(const GenomicRegion &prev, const GenomicRegion &gr) const {
@@ -1657,6 +1658,8 @@ variance_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
         vector<double> hist;
         resample_hist(rng, orig_hist, vals_sum, vals_size, hist);
         
+
+        
         const double initial_distinct = accumulate(hist.begin(), hist.end(), 0.0);
         
         //resize boot_hist to remove excess zeros
@@ -1908,7 +1911,7 @@ gc_extrap(const bool VERBOSE,
 }
 
 
-
+*/
 
 
 static int usage()
@@ -1918,7 +1921,7 @@ static int usage()
     cerr << "Usage: preseq <command> [OPTIONS]\n\n";
     cerr << "Command: c_curve          generate complexity curve for a library\n";
     cerr << "         lc_extrap        predict the yield for future experiments\n";
-    cerr << "         gc_extrap        extrapolate genomic complexity";
+   // cerr << "         gc_extrap        extrapolate genomic complexity";
     cerr << "\n\n";
     return 0;
  //   string input_file_name2 = "SRR726645.sort.mr";
@@ -2055,18 +2058,12 @@ main(const int argc, const char **argv) {
                           bootstraps,
                           diagonal,
                           c_level,
-                          tolerance,
-                          max_iter,
-                          dupl_level,
                           input_file_name,
                           outfile);
             }
         }
         
-        
-        
-        
-        
+
         
         else if (strcmp(argv[1], "c_curve") == 0) {
             
@@ -2134,10 +2131,10 @@ main(const int argc, const char **argv) {
         
         
         
-        
+       /*
         else if (strcmp(argv[1], "gc_extrap") == 0) {
             
-            /********** GET COMMAND LINE ARGUMENTS  FOR GC EXTRAP ***********/
+            /********** GET COMMAND LINE ARGUMENTS  FOR GC EXTRAP **********
             OptionParser opt_parse(strip_path(argv[1]),
                                    "", "<sorted-mapped-read-file>");
             opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
@@ -2197,7 +2194,7 @@ main(const int argc, const char **argv) {
                 return EXIT_SUCCESS;
             }
             const string input_file_name = leftover_args.front();
-            /******************************************************************/
+            /*****************************************************************
             
             if (argc > 2){
                 gc_extrap(VERBOSE,
@@ -2221,6 +2218,8 @@ main(const int argc, const char **argv) {
             }
             
         }
+        */
+        
         else {
             cerr << "unrecognized command " << argv[1] << endl;
         }
