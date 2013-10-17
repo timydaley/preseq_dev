@@ -26,8 +26,10 @@ ifndef SMITHLAB_CPP
 SMITHLAB_CPP=$(ROOT)/smithlab_cpp/
 endif
 
-ifdef SAMTOOLS_DIR
-INCLUDEDIRS += $(SAMTOOLS_DIR)
+
+ifndef SAMTOOLS_DIR
+#SAMTOOLS_DIR=/home/rcf-40/helus/panfs/samtools-0.1.19/
+SAMTOOLS_DIR=/home/rcf-40/helus/panfs/methpipe/trunk/src/samtools
 endif
 
 SOURCES = $(wildcard *.cpp)
@@ -47,6 +49,10 @@ ifdef DEBUG
 CXXFLAGS += $(DEBUGFLAGS)
 endif
 
+ifdef SAMTOOLS_DIR
+INCLUDEDIRS += $(SAMTOOLS_DIR)
+CXXFLAGS += -DHAVE_SAMTOOLS
+endif
 
 
 ifdef OPT
