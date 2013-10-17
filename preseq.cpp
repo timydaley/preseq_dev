@@ -54,6 +54,7 @@
 #include "continued_fraction.hpp"
 
 using std::string;
+using std::min;
 using std::vector;
 using std::endl;
 using std::cerr;
@@ -121,7 +122,7 @@ load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
   counts_hist.resize(2, 0.0);
   size_t current_count = 1;
     
-  MappedRead prev_mr;
+  MappedRead prev_mr, curr_mr;
   prev_mr = samr.mr;
 
   while (sam_reader >> samr, sam_reader.is_good()) 
@@ -247,9 +248,9 @@ update_pe_duplicate_counts_hist(const MappedRead &curr_mr,
 				vector<double> &counts_hist,
 				size_t &current_count){
   // check if reads are sorted
-  if (curr_mr.r.same_chrom(prev_mr.r) && 
+  if (curr_mr.r.same_chrom(prev_mr.r) &&
       curr_mr.r.get_start() < prev_mr.r.get_start()
-      && merged_mr.r.get_end() < prev_mr.r.get_end())
+      && curr_mr.r.get_end() < prev_mr.r.get_end())
     throw SMITHLABException("locations unsorted in: " + input_file_name);
                 
   if (!curr_mr.r.same_chrom(prev_mr.r) || 
@@ -300,7 +301,7 @@ load_counts_BAM_pe(const string &input_file_name,
 	    if (dangling_mates.find(read_name) != dangling_mates.end())
 	    // other end is in dangling mates, merge the two mates
 	      {
-		assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
+		assert(same_read(0, samr.mr, dangling_mates[read_name].mr));
 		if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
 		revcomp(samr.mr);
 
@@ -951,7 +952,7 @@ write_predicted_complexity_curve(const string outfile,
     if (!outfile.empty()) of.open(outfile.c_str());
     std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
     
-    out << "TOTAL_READS\tFOLD_EXTRAPOLATION\tEXPECTED_DISTINCT\t"
+    out << "TOTAL_READS\tEXPECTED_DISTINCT\t"
     << "LOGNORMAL_LOWER_" << 100*c_level << "%CI\t"
     << "LOGNORMAL_UPPER_" << 100*c_level << "%CI" << endl;
     
@@ -974,7 +975,7 @@ lc_extrap(const bool VERBOSE,
           const bool PAIRED_END,
           const bool HIST_INPUT,
           const bool SINGLE_ESTIMATE,
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
           const bool BAM_FORMAT_INPUT,
 #endif
           const size_t MIN_REQUIRED_COUNTS,
@@ -985,7 +986,8 @@ lc_extrap(const bool VERBOSE,
           const int diagonal,
           const double c_level,
           const string &input_file_name,
-          const string &outfile) {
+          const string &outfile,
+          const size_t MAX_SEGMENT_LENGTH) {
         
   vector<double> counts_hist;
   size_t n_reads = 0;
@@ -1005,7 +1007,7 @@ lc_extrap(const bool VERBOSE,
   else if (BAM_FORMAT_INPUT && PAIRED_END){
     if(VERBOSE)
       cerr << "PAIRED_END_BAM_INPUT" << endl;
-    n_reads = load_counts_BAM_pe(input_file_name, counts_hist);
+    n_reads = load_counts_BAM_pe(input_file_name, MAX_SEGMENT_LENGTH, counts_hist);
   }
   else if(BAM_FORMAT_INPUT){
     if(VERBOSE)
@@ -1156,13 +1158,14 @@ static void c_curve (const bool VERBOSE,
                      const bool VALS_INPUT,
                      const bool PAIRED_END,
                      const bool HIST_INPUT,
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
                      const bool BAM_FORMAT_INPUT,
 #endif
                      double step_size,
                      size_t upper_limit,
                      const string &input_file_name,
-                     const string &outfile){
+                     const string &outfile,
+                     const size_t MAX_SEGMENT_LENGTH){
     
     
     // Setup the random number generator
@@ -1189,7 +1192,7 @@ static void c_curve (const bool VERBOSE,
   else if (BAM_FORMAT_INPUT && PAIRED_END){
     if(VERBOSE)
       cerr << "PAIRED_END_BAM_INPUT" << endl;
-    n_reads = load_counts_BAM_pe(input_file_name, counts_hist);
+    n_reads = load_counts_BAM_pe(input_file_name, MAX_SEGMENT_LENGTH, counts_hist);
   }
   else if(BAM_FORMAT_INPUT){
     if(VERBOSE)
@@ -1950,7 +1953,7 @@ main(const int argc, const char **argv) {
         double step_size = 1e6;
         // double read_step_size = 1e7;
         
-        
+        size_t MAX_SEGMENT_LENGTH = 10000;
         size_t max_width = 1000;
         size_t bootstraps = 100;
         int diagonal = -1;
@@ -1971,7 +1974,7 @@ main(const int argc, const char **argv) {
         bool HIST_INPUT = false;
         bool SINGLE_ESTIMATE = false;
         
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
         bool BAM_FORMAT_INPUT = false;
 #endif
         
@@ -2004,7 +2007,7 @@ main(const int argc, const char **argv) {
             //		      false, max_iter);
             opt_parse.add_opt("verbose", 'v', "print more information",
                               false, VERBOSE);
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
             opt_parse.add_opt("bam", 'B', "input is in BAM format",
                               false, BAM_FORMAT_INPUT);
 #endif
@@ -2048,7 +2051,7 @@ main(const int argc, const char **argv) {
                           PAIRED_END,
                           HIST_INPUT,
                           SINGLE_ESTIMATE,
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
                           BAM_FORMAT_INPUT,
 #endif
                           MIN_REQUIRED_COUNTS,
@@ -2059,7 +2062,8 @@ main(const int argc, const char **argv) {
                           diagonal,
                           c_level,
                           input_file_name,
-                          outfile);
+                          outfile,
+                          MAX_SEGMENT_LENGTH);
             }
         }
         
@@ -2077,7 +2081,7 @@ main(const int argc, const char **argv) {
                               false, step_size);
             opt_parse.add_opt("verbose", 'v', "print more information",
                               false, VERBOSE);
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
             opt_parse.add_opt("bam", 'B', "input is in BAM format",
                               false, BAM_FORMAT_INPUT);
 #endif
@@ -2118,13 +2122,14 @@ main(const int argc, const char **argv) {
                          VALS_INPUT,
                          PAIRED_END,
                          HIST_INPUT,
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
                          BAM_FORMAT_INPUT,
 #endif
                          step_size,
                          upper_limit,
                          input_file_name,
-                         outfile);
+                         outfile,
+                         MAX_SEGMENT_LENGTH);
             }
         }
         
@@ -2232,7 +2237,7 @@ main(const int argc, const char **argv) {
          PAIRED_END,
          HIST_INPUT,
          SINGLE_ESTIMATE,
-         #ifdef HAVE_BAMTOOLS
+         #ifdef HAVE_SAMTOOLS
          BAM_FORMAT_INPUT,
          #endif
          MIN_REQUIRED_COUNTS,
