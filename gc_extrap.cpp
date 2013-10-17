@@ -133,6 +133,7 @@ SplitGenomicRegion(const GenomicRegion &inputGR,
       outputGRs.push_back(binned_gr);
     }
   }
+
 }
 
 // split a mapped read into multiple genomic regions
@@ -177,6 +178,17 @@ SplitMappedRead(const bool VERBOSE,
     seq_iterator++;
     read_iterator++;
   }
+
+  double frac = static_cast<double>(covered_bases)/bin_size;
+  if(runif.runif(0.0, 1.0) <= frac){
+    const size_t curr_start = read_iterator - (read_iterator % bin_size);
+    const size_t curr_end = curr_start + bin_size;
+    GenomicRegion binned_gr(inputMR.r.get_chrom(), curr_start, curr_end,
+			    inputMR.r.get_name(), inputMR.r.get_score(),
+			    inputMR.r.get_strand());
+    outputGRs.push_back(binned_gr);
+  }
+
 
 }
 
@@ -527,8 +539,8 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
     assert(umis.size() == static_cast<size_t>(sample_vals_sum));
 
     // compute complexity curve by random sampling w/out replacement
-    size_t upper_limit = static_cast<size_t>(sample_vals_sum);
-    size_t step = static_cast<size_t>(step_size);
+    const size_t upper_limit = static_cast<size_t>(sample_vals_sum);
+    const size_t step = static_cast<size_t>(step_size);
     size_t sample = step;
     while(sample < upper_limit){
       yield_vector.push_back(sample_count_distinct(rng, umis, sample));
