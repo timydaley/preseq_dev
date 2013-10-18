@@ -394,7 +394,7 @@ update_se_duplicate_counts_hist(const GenomicRegion &curr_gr,
     {
       // histogram is too small, resize
       if(counts_hist.size() < current_count + 1)
-	counts_hist.resize(current_count + 1, 0.0);
+          counts_hist.resize(current_count + 1, 0.0);
       ++counts_hist[current_count];
       current_count = 1;
     }
@@ -424,6 +424,10 @@ load_counts_BED_se(const string input_file_name, vector<double> &counts_hist) {
     ++n_reads;
     prev_gr.swap(curr_gr);
   }
+    
+    
+// to account for the last read compared to the one before it.
+  ++counts_hist[current_count];
 
   return n_reads;
 }
@@ -447,7 +451,7 @@ update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
     {
       // histogram is too small, resize
       if(counts_hist.size() < current_count + 1)
-	counts_hist.resize(current_count + 1, 0.0);
+          counts_hist.resize(current_count + 1, 0.0);
       ++counts_hist[current_count];
       current_count = 1;
     }
@@ -472,14 +476,20 @@ load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
     
  size_t n_reads = 1;
  size_t current_count = 1;
-
+    
+//read in file and compare each gr with the one before it
  while (in >> curr_gr) {
    update_pe_duplicate_counts_hist(curr_gr, prev_gr, input_file_name, counts_hist, current_count);
     ++n_reads;
     prev_gr.swap(curr_gr);
   }
-
+    
+ // to account for the last read compared to the one before it.
+ ++counts_hist[current_count];
+     
+    
  return n_reads;
+
 
 }
 
