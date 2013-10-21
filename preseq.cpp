@@ -338,7 +338,7 @@ load_counts_BAM_pe(const string &input_file_name,
 
           ++n_reads;
           prev_mr = samr.mr;
-           /*
+           */ 
           
           
 	// dangling mates is too large, flush dangling_mates of reads
