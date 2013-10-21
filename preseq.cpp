@@ -131,19 +131,22 @@ load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
 	// only convert mapped and primary reads
       {
         // ignore unmapped reads & secondary alignments
-	if(!(samr.is_mapping_paired) || (samr.is_mapping_paired && samr.is_Trich)){
+          if(!(samr.is_mapping_paired) || (samr.is_mapping_paired && samr.is_Trich)){
             //only count unpaired reads or the left mate of paired reads
 
-	  curr_mr = samr.mr;
-	  update_se_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+              curr_mr = samr.mr;
+              update_se_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
     
 	      // update number of reads and prev read
-	  ++n_reads;
-	  prev_mr = samr.mr;
-	}
+              ++n_reads;
+              prev_mr = samr.mr;
+          }
       }
-  }
+    }
     
+  // to account for the last read compared to the one before it.
+  ++counts_hist[current_count];
+  
   return n_reads;
 }
 
@@ -293,68 +296,86 @@ load_counts_BAM_pe(const string &input_file_name,
     if(samr.is_primary && samr.is_mapped)
 	// only convert mapped and primary reads
       { // ignore unmapped reads & secondary alignments
-	if(samr.is_mapping_paired)
-	  { //only count paired reads
+          if(samr.is_mapping_paired)
+          { //only count paired reads
 
-	    const string read_name
-	      = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size());
-	    if (dangling_mates.find(read_name) != dangling_mates.end())
-	    // other end is in dangling mates, merge the two mates
-	      {
-		assert(same_read(0, samr.mr, dangling_mates[read_name].mr));
-		if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
-		revcomp(samr.mr);
+              const string read_name
+                = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size());
+              if (dangling_mates.find(read_name) != dangling_mates.end())
+            // other end is in dangling mates, merge the two mates
+              {
+                  assert(same_read(0, samr.mr, dangling_mates[read_name].mr));
+                  if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+                  revcomp(samr.mr);
 
-		MappedRead merged_mr;
-		int len = 0;
-		merge_mates(MAX_SEGMENT_LENGTH, dangling_mates[read_name].mr, 
-			    samr.mr, merged_mr, len);
-		curr_mr = merged_mr;
-	      }
-	    else // other end not in dangling mates, put in dangling mates for merging
-	      dangling_mates[read_name] = samr;
+                  MappedRead merged_mr;
+                  int len = 0;
+                  merge_mates(MAX_SEGMENT_LENGTH, dangling_mates[read_name].mr, 
+                              samr.mr, merged_mr, len);
+                  curr_mr = merged_mr;
+                  
+                  update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+                  ++n_reads;
+                  prev_mr = curr_mr;
+              }
+              else // other end not in dangling mates, put in dangling mates for merging
+                  dangling_mates[read_name] = samr;
+                
 
-	  }
-	else // mapping is not paired
-	  if(samr.is_Trich) // only consider one end
-	    curr_mr = samr.mr;
+          }
+          else // mapping is not paired
+              if(samr.is_Trich){ // only consider one end
+                  curr_mr = samr.mr;
+                  update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+                  ++n_reads;
+                  prev_mr = samr.mr;
+              }
+          
+         
+          ///this is where the error occurs///
+          /*
+          update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
 
-	update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-
-	++n_reads;
-	prev_mr = samr.mr;
-
+          ++n_reads;
+          prev_mr = samr.mr;
+           /*
+          
+          
 	// dangling mates is too large, flush dangling_mates of reads
 	// on different chroms and too far away 
-	if (dangling_mates.size() > 5000)
-	  {
-	    using std::tr1::unordered_map;
-	    unordered_map<string, SAMRecord> tmp;
-	    for (unordered_map<string, SAMRecord>::iterator
-		   itr = dangling_mates.begin();
-		 itr != dangling_mates.end(); ++itr)
-	      if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
-		  || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
-		      && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
-		      samr.mr.r.get_start()))
-		{
-		  if (!itr->second.is_Trich) {
-		    revcomp(itr->second.mr);
-		    curr_mr = itr->second.mr;
-		    update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-		    ++n_reads;
-		    prev_mr = curr_mr;
-		  }
+          if (dangling_mates.size() > 5000)
+          {
+              using std::tr1::unordered_map;
+              unordered_map<string, SAMRecord> tmp;
+              for (unordered_map<string, SAMRecord>::iterator
+                   itr = dangling_mates.begin();
+                   itr != dangling_mates.end(); ++itr){
+                  if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
+                      || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
+                          && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
+                        samr.mr.r.get_start()))
+                  {
+                      if (!itr->second.is_Trich) {
+                          revcomp(itr->second.mr);
+                          curr_mr = itr->second.mr;
+                          update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+                          ++n_reads;
+                          prev_mr = curr_mr;
+                      }
 
-		}
-	      else
-		tmp[itr->first] = itr->second;
+                  }
+                  else
+                      tmp[itr->first] = itr->second;
+                  std::swap(tmp, dangling_mates);
+              }
 	    
-	    std::swap(tmp, dangling_mates);
+              
 	  
-	  }
+          }
       }
-  }
+  } ////THIS IS WHERE THE WHILE LOOP ENDS//////
+    
+    
     // flushing dangling_mates of all remaining ends
     while (!dangling_mates.empty()) {
       if (!dangling_mates.begin()->second.is_Trich){
@@ -366,7 +387,7 @@ load_counts_BAM_pe(const string &input_file_name,
       }
 
       dangling_mates.erase(dangling_mates.begin());
-    }   
+    }
     
   return n_reads;
 }
