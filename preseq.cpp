@@ -282,15 +282,13 @@ load_counts_BAM_pe(const string &input_file_name,
   
   std::tr1::unordered_map<string, SAMRecord> dangling_mates;
   SAMRecord samr;
-  sam_reader >> samr;
-  size_t n_reads = 1;
+  size_t n_reads = 0;
     // resize vals_hist, make sure it starts out empty
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
-  size_t current_count = 1;
+  size_t current_count = 0;
     
   MappedRead prev_mr, curr_mr;
-  prev_mr = samr.mr;
 
   while (sam_reader >> samr, sam_reader.is_good()) {
     if(samr.is_primary && samr.is_mapped)
@@ -313,8 +311,13 @@ load_counts_BAM_pe(const string &input_file_name,
                   merge_mates(MAX_SEGMENT_LENGTH, dangling_mates[read_name].mr, 
                               samr.mr, merged_mr, len);
                   curr_mr = merged_mr;
-                  
-                  update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+		  // check if we have read any reads in yet, if yes update hist
+                  if(!(prev_mr.r.get_chrom().empty()))
+		      update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+		  // haven't read any reads in yet
+		  else
+		    current_count = 1;
+
                   ++n_reads;
                   prev_mr = curr_mr;
               }
@@ -326,9 +329,15 @@ load_counts_BAM_pe(const string &input_file_name,
           else // mapping is not paired
               if(samr.is_Trich){ // only consider one end
                   curr_mr = samr.mr;
-                  update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+		  // check if we have read any reads in yet, if yes update hist
+                  if(!(prev_mr.r.get_chrom().empty()))
+		      update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+		  // haven't read any reads in yet
+		  else
+		    current_count = 1;
+
                   ++n_reads;
-                  prev_mr = samr.mr;
+                  prev_mr = curr_mr;
               }
           
          
@@ -358,9 +367,15 @@ load_counts_BAM_pe(const string &input_file_name,
                       if (!itr->second.is_Trich) {
                           revcomp(itr->second.mr);
                           curr_mr = itr->second.mr;
-                          update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-                          ++n_reads;
-                          prev_mr = curr_mr;
+			  // check if we have read any reads in yet, if yes update hist
+			  if(!(prev_mr.r.get_chrom().empty()))
+			    update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+			  // haven't read any reads in yet
+			  else
+			    current_count = 1;
+			  
+			  ++n_reads;
+			  prev_mr = curr_mr;
                       }
 
                   }
