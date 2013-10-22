@@ -28,8 +28,7 @@ endif
 
 
 ifndef SAMTOOLS_DIR
-#SAMTOOLS_DIR=/home/rcf-40/helus/panfs/samtools-0.1.19/
-SAMTOOLS_DIR=/home/rcf-40/helus/panfs/methpipe/trunk/src/samtools
+SAMTOOLS_DIR=$(ROOT)/samtools/
 endif
 
 SOURCES = $(wildcard *.cpp)
