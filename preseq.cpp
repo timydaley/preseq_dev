@@ -111,7 +111,7 @@ static size_t
 load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
     
   SAMReader sam_reader(input_file_name, mapper);   
-  if(!(sam_reader.is_good()))
+    if(!(sam_reader.is_good()))
     throw SMITHLABException("problem opening input file " + input_file_name);
 
   SAMRecord samr;
@@ -253,9 +253,11 @@ update_pe_duplicate_counts_hist(const MappedRead &curr_mr,
   // check if reads are sorted
   if (curr_mr.r.same_chrom(prev_mr.r) &&
       curr_mr.r.get_start() < prev_mr.r.get_start()
-      && curr_mr.r.get_end() < prev_mr.r.get_end())
+      && curr_mr.r.get_end() < prev_mr.r.get_end()){
+      cerr << "prev = " << prev_mr << endl;
+      cerr << "curr = " << curr_mr << endl;
     throw SMITHLABException("locations unsorted in: " + input_file_name);
-                
+  }
   if (!curr_mr.r.same_chrom(prev_mr.r) || 
       curr_mr.r.get_start() != prev_mr.r.get_start() ||
       curr_mr.r.get_end() != prev_mr.r.get_end())
@@ -270,6 +272,114 @@ update_pe_duplicate_counts_hist(const MappedRead &curr_mr,
   else // next read is same, update current_count
     ++current_count;
 }
+
+
+
+
+////////merge sort functions, used in load_counts_BAM_pe////////////
+
+
+vector<SAMRecord> merge(vector<SAMRecord> left, vector<SAMRecord> right)
+{
+    vector<SAMRecord> result;
+    //while there are still elements left in either the left or right vector
+    while ((int)left.size() > 0 || (int)right.size() > 0) {
+        
+        //if there are still elements left in both the vectors
+        if ((int)left.size() > 0 && (int)right.size() > 0) {
+            
+            //if the right position of the first read in our left vector is 
+            //before the right pos of the first read in our right vector
+            if (left.front.mr.r.get_end() <= right.front.mr.r.get_end()) {
+                result.push_back(left.front());
+                left.erase(left.begin());
+            }
+            //other wise, if the right position of the first read in the
+            //other vector is first
+            else {
+                result.push_back((int)right.front());
+                right.erase(right.begin());
+            }
+        
+       
+        }
+        else if ((int)left.size() > 0) {
+            for (int i = 0; i < (int)left.size(); i++)
+                result.push_back(left[i]);
+            break;
+        }
+        
+        else if ((int)right.size() > 0) {
+            for (int i = 0; i < (int)right.size(); i++)
+                result.push_back(right[i]);
+            break;
+        }
+    }
+    return result;
+}
+
+
+//recursive merge sort 
+vector<SAMRecord> mergeSort(vector<SAMRecord> m)
+{
+    //if there's only one element, no need to sort
+    if (m.size() <= 1)
+        return m;
+    
+    vector<SAMRecord> left, right, result;
+    int middle = ((int)m.size()+ 1) / 2;
+    
+    
+    //splitting the vector of SAM records into two
+    for (int i = 0; i < middle; i++) {
+        left.push_back(m[i]);
+    }
+    
+    for (int i = middle; i < (int)m.size(); i++) {
+        right.push_back(m[i]);
+    }
+    
+    //recursively sort and merge. 
+    
+    left = mergeSort(left);
+    right = mergeSort(right);
+    result = merge(left, right);
+    
+    return result;
+}
+/////////////////end merge sort functions///////////////////
+
+
+/////comparison function for priority queue/////////////////
+
+
+/****check this later or get Andrew or Tim to check it****/
+
+static inline bool
+end_before(const SAMRecord &a, const SAMRecord &b) {
+    return a.mr.r.get_end() > b.mr.r.get_end();
+}
+
+
+static inline bool
+same_start(const SAMRecord &a, const SAMRecord &b) {
+    return a.mr.r.get_start() == b.mr.r.get_start();
+}
+
+struct LeftMateRightPosCheck {
+    bool operator()(const SAMRecord &prev, const SAMRecord &curr) const {
+        return start_check(prev, curr);
+    }
+
+    static bool
+    start_check(const SAMRecord &prev, const SAMRecord &curr) {
+        return ((prev.mr.r.same_chrom(curr) && same_start(prev, curr) && end_before(prev, curr)));
+    }
+};
+///////end/////////
+
+
+
 
 static size_t
 load_counts_BAM_pe(const string &input_file_name, 
@@ -286,9 +396,110 @@ load_counts_BAM_pe(const string &input_file_name,
     // resize vals_hist, make sure it starts out empty
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
-  size_t current_count = 0;
+  size_t current_count = 1;
+    vector<SAMRecord> temp;
+    temp.clear();
+
     
-  MappedRead prev_mr, curr_mr;
+  MappedRead prev_mr, curr_mr, prev_mr_comp, curr_mr_comp;
+    
+    
+    while (sam_reader >> samr, sam_reader.is_good()) {
+         // only convert mapped and primary reads
+        // ignore unmapped reads & secondary alignments
+        if(samr.is_primary && samr.is_mapped)
+        {
+            //only count paired end reads
+            if(samr.is_mapping_paired)
+            {
+                //only count left mate (template length > 0)
+                if(samr.seg_len > 0){
+                    
+                    //if prev_mr is empty, fill this first.
+                    if (!(prev_mr.r.get_chrom().empty())){
+                        prev_mr = samr.mr;
+                        ++n_reads;
+                        if(temp.size() < n_reads)
+                        temp.resize(n_reads, 0.0);
+                        //add to temporary holding vector
+                        temp[n_reads - 1] = samr;
+                    }
+                    
+                    //if prev_mr is not empty,
+                    else{
+                        //then we can go ahead and fill curr_mr
+                        curr_mr = samr.mr;
+                        
+                        //if these have the same starting position
+                        if(curr_mr.r.get_start() == prev_mr.r.getstart()){
+                            ++n_reads;
+                            
+                            if(temp.size() < n_reads)
+                            temp.resize(n_reads, 0.0);
+                            //add to temporary holding vector
+                            temp[n_reads - 1] = samr;
+                            
+                        }
+                        
+                        //otherwise, if these reads don't have the same starting position..
+                        //we can now work with comparing whats in our current "group" of reads
+                        else{
+                           //sort reads in temp by right pos
+                           //with first element having the earliest start position
+                            temp = mergeSort(temp);
+                            
+                            
+                             /*****compare reads in priority queue & update counts hist below*****/
+                            
+                            std::priority_queue<SAMRecord, vector<SAMRecord>, LeftMateRightPosCheck<SAMRecord> leftmate_pq;
+                            
+                            //fill priority queue
+                            for(size_t i = 0, i < temp.size(), i++){
+                                leftmate_pq.push(temp[i]);
+                            }
+                            
+                            
+                            //compare consecutive reads in the queue
+                            if(temp.size() > 0){
+                                prev_mr_comp = leftmate_pq.top().mr;
+                                leftmate_pq.pop();
+                                while(!leftmate_pq.empty()){
+                                    curr_mr_comp = leftmate_pq.top().mr;
+                                    leftmate_pq.pop();
+                                    
+                                    //update counts hist
+                                    update_pe_duplicate_counts_hist(curr_mr_comp, prev_mr_comp, input_file_name, counts_hist, current_count);
+                                    prev_mr_comp.swap(curr_mr_comp);
+                                    
+                                }//end while loop
+                                ++counts_hist[current_count];
+                                
+                            }
+                            
+                            
+                            
+                            current_count = 1;
+                            //clear out temp vector for new "group" of reads
+                            //with same left position
+                            temp.clear();
+                            prev_mr = samr.mr;
+                            n_reads = 1; //reset the number of reads
+                            if(temp.size() < n_reads)
+                                temp.resize(n_reads, 0.0);
+                            temp[n_reads - 1] = samr;
+                            
+                            
+                        }
+                    }
+                                 
+                  
+                }//end if seg len
+            }//end if map paired
+        }//end if primary & mapped
+    }//end while loop
+    
+    
+    /*
 
   while (sam_reader >> samr, sam_reader.is_good()) {
     if(samr.is_primary && samr.is_mapped)
@@ -315,15 +526,17 @@ load_counts_BAM_pe(const string &input_file_name,
                   if(!(prev_mr.r.get_chrom().empty()))
 		      update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
 		  // haven't read any reads in yet
-		  else
-		    current_count = 1;
+                  else
+                      current_count = 1;
 
                   ++n_reads;
                   prev_mr = curr_mr;
               }
-              else // other end not in dangling mates, put in dangling mates for merging
+              else{// other end not in dangling mates, put in dangling mates for merging
                   dangling_mates[read_name] = samr;
-                
+                  ++n_reads;
+                ////after Tim fixes the algorithm, add in ++n_reads; here too///
+              }
 
           }
           else // mapping is not paired
@@ -333,21 +546,12 @@ load_counts_BAM_pe(const string &input_file_name,
                   if(!(prev_mr.r.get_chrom().empty()))
 		      update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
 		  // haven't read any reads in yet
-		  else
-		    current_count = 1;
+                  else
+                      current_count = 1;
 
                   ++n_reads;
                   prev_mr = curr_mr;
               }
-          
-         
-          ///this is where the error occurs///
-          /*
-          update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-
-          ++n_reads;
-          prev_mr = samr.mr;
-           */ 
           
           
 	// dangling mates is too large, flush dangling_mates of reads
@@ -389,6 +593,10 @@ load_counts_BAM_pe(const string &input_file_name,
           }
       }
   } ////THIS IS WHERE THE WHILE LOOP ENDS//////
+    */
+    
+    //to account for the last read
+    ++counts_hist[current_count];
     
     
     // flushing dangling_mates of all remaining ends
@@ -477,10 +685,12 @@ update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
   // check if reads are sorted
   if (curr_gr.same_chrom(prev_gr) && 
       curr_gr.get_start() < prev_gr.get_start()
-      && curr_gr.get_end() < prev_gr.get_end())
+      && curr_gr.get_end() < prev_gr.get_end()){
+      cerr << "prev = " << prev_gr << endl;
+      cerr << "curr = " << curr_gr << endl;
     throw SMITHLABException("locations unsorted in: " + input_file_name);
-                
-  if (!curr_gr.same_chrom(prev_gr) || 
+  }
+  if (!curr_gr.same_chrom(prev_gr) ||
       curr_gr.get_start() != prev_gr.get_start() ||
       curr_gr.get_end() != prev_gr.get_end())
     // next read is new, update counts_hist to include current_count
