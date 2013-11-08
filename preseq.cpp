@@ -131,11 +131,13 @@ load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
 	// only convert mapped and primary reads
       {
         // ignore unmapped reads & secondary alignments
-          if(!(samr.is_mapping_paired) || (samr.is_mapping_paired && samr.is_Trich)){
+          if(!(samr.is_mapping_paired) ||
+             (samr.is_mapping_paired && samr.is_Trich)){
             //only count unpaired reads or the left mate of paired reads
 
               curr_mr = samr.mr;
-              update_se_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
+              update_se_duplicate_counts_hist(curr_mr, prev_mr, input_file_name,
+                                              counts_hist, current_count);
     
 	      // update number of reads and prev read
               ++n_reads;
@@ -145,6 +147,8 @@ load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
     }
     
   // to account for the last read compared to the one before it.
+  if(counts_hist.size() < current_count + 1)
+        counts_hist.resize(current_count + 1, 0.0);
   ++counts_hist[current_count];
   
   return n_reads;
@@ -187,7 +191,8 @@ merge_mates(const size_t range, const MappedRead &one, const MappedRead &two,
   // assert(len > 0);
   // assert(one_left <= one_right && two_left <= two_right);
   // assert(overlap_start >= overlap_end || static_cast<size_t>(len) == 
-  //    ((one_right - one_left) + (two_right - two_left) + (overlap_end - overlap_start)));
+  //   ((one_right - one_left) + (two_right - two_left) +
+  //             (overlap_end - overlap_start)));
   
   string seq(len, 'N');
   string scr(len, 'B');
@@ -244,40 +249,41 @@ revcomp(MappedRead &mr) {
   std::reverse(mr.scr.begin(), mr.scr.end());
 }
 
+
+
 static void
-update_pe_duplicate_counts_hist(const MappedRead &curr_mr,
-				const MappedRead &prev_mr,
-				const string input_file_name,
-				vector<double> &counts_hist,
-				size_t &current_count){
-  // check if reads are sorted
-  if (curr_mr.r.same_chrom(prev_mr.r) &&
-      curr_mr.r.get_start() < prev_mr.r.get_start()
-      && curr_mr.r.get_end() < prev_mr.r.get_end()){
-      cerr << "prev = " << prev_mr << endl;
-      cerr << "curr = " << curr_mr << endl;
-    throw SMITHLABException("locations unsorted in: " + input_file_name);
-  }
-  if (!curr_mr.r.same_chrom(prev_mr.r) || 
-      curr_mr.r.get_start() != prev_mr.r.get_start() ||
-      curr_mr.r.get_end() != prev_mr.r.get_end())
-    // next read is new, update counts_hist to include current_count
-    {
-      // histogram is too small, resize
-      if(counts_hist.size() < current_count + 1)
-	counts_hist.resize(current_count + 1, 0.0);
-      ++counts_hist[current_count];
-      current_count = 1;
+update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
+                                const GenomicRegion &prev_gr,
+                                const string input_file_name,
+                                vector<double> &counts_hist,
+                                size_t &current_count){
+    // check if reads are sorted
+    if (curr_gr.same_chrom(prev_gr) &&
+        curr_gr.get_start() < prev_gr.get_start()
+        && curr_gr.get_end() < prev_gr.get_end()){
+        cerr << "prev = " << prev_gr << endl;
+        cerr << "curr = " << curr_gr << endl;
+        throw SMITHLABException("locations unsorted in: " + input_file_name);
     }
-  else // next read is same, update current_count
-    ++current_count;
+    if (!curr_gr.same_chrom(prev_gr) ||
+        curr_gr.get_start() != prev_gr.get_start() ||
+        curr_gr.get_end() != prev_gr.get_end())
+        // next read is new, update counts_hist to include current_count
+    {
+        // histogram is too small, resize
+        if(counts_hist.size() < current_count + 1)
+            counts_hist.resize(current_count + 1, 0.0);
+        ++counts_hist[current_count];
+        current_count = 1;
+    }
+    else // next read is same, update current_count
+        ++current_count;
 }
 
 
 
-
 ////////merge sort functions, used in load_counts_BAM_pe////////////
-
+/*
 
 vector<SAMRecord> merge(vector<SAMRecord> left, vector<SAMRecord> right)
 {
@@ -346,7 +352,7 @@ vector<SAMRecord> mergeSort(vector<SAMRecord> m)
     result = merge(left, right);
     
     return result;
-}
+}*/
 /////////////////end merge sort functions///////////////////
 
 
@@ -356,24 +362,25 @@ vector<SAMRecord> mergeSort(vector<SAMRecord> m)
 /****check this later or get Andrew or Tim to check it****/
 
 static inline bool
-end_before(const SAMRecord &a, const SAMRecord &b) {
-    return a.mr.r.get_end() > b.mr.r.get_end();
+end_before(const GenomicRegion &a, const GenomicRegion &b) {
+    return b.get_end() < a.get_end();
 }
 
 
 static inline bool
-same_start(const SAMRecord &a, const SAMRecord &b) {
-    return a.mr.r.get_start() == b.mr.r.get_start();
+same_start(const GenomicRegion &a, const GenomicRegion &b) {
+    return a.get_start() == b.get_start();
 }
 
 struct LeftMateRightPosCheck {
-    bool operator()(const SAMRecord &prev, const SAMRecord &curr) const {
+    bool operator()(const GenomicRegion &prev, const GenomicRegion &curr) const {
         return start_check(prev, curr);
     }
 
     static bool
-    start_check(const SAMRecord &prev, const SAMRecord &curr) {
-        return ((prev.mr.r.same_chrom(curr) && same_start(prev, curr) && end_before(prev, curr)));
+    start_check(const GenomicRegion &prev, const GenomicRegion &curr) {
+        return ((prev.same_chrom(curr) && same_start(prev, curr)
+                 && end_before(prev, curr)));
     }
 };
 ///////end/////////
@@ -390,19 +397,42 @@ load_counts_BAM_pe(const string &input_file_name,
   if(!(sam_reader.is_good()))
     throw SMITHLABException("problem opening input file " + input_file_name);
   
-  std::tr1::unordered_map<string, SAMRecord> dangling_mates;
   SAMRecord samr;
   size_t n_reads = 0;
     // resize vals_hist, make sure it starts out empty
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
   size_t current_count = 1;
-    vector<SAMRecord> temp;
-    temp.clear();
+   // int loop = 1;
 
+  GenomicRegion prev_gr, curr_gr, prev_gr_comp, curr_gr_comp;
+  /*  if ((prev_gr.get_chrom().empty())){
+        cerr << "prev_gr is empty" << endl;
+    }
+        else{
+        cerr << "prev_gr contains" << prev_gr.get_chrom();
+        }
+        if ((curr_gr.get_chrom().empty())){
+            cerr << "curr_gr is empty" << endl;
+        }
+        else{
+            cerr << "curr_gr contains" << curr_gr.get_chrom();
+        }
+        if ((prev_gr_comp.get_chrom().empty())){
+            cerr << "prev_gr_comp is empty" << endl;
+        }
+        else{
+            cerr << "prev_gr_comp contains" << prev_gr_comp.get_chrom();
+        }
+        if((curr_gr_comp.get_chrom().empty())){
+            cerr << "curr_gr_comp is empty" << endl;
+        }
+        else {
+            cerr <<"curr_gr_comp contains" << curr_gr_comp.get_chrom();
+        }*/
     
-  MappedRead prev_mr, curr_mr, prev_mr_comp, curr_mr_comp;
-    
+  std::priority_queue<GenomicRegion, vector<GenomicRegion>,
+    LeftMateRightPosCheck> leftmate_pq;
     
     while (sam_reader >> samr, sam_reader.is_good()) {
          // only convert mapped and primary reads
@@ -415,82 +445,138 @@ load_counts_BAM_pe(const string &input_file_name,
                 //only count left mate (template length > 0)
                 if(samr.seg_len > 0){
                     
-                    //if prev_mr is empty, fill this first.
-                    if (!(prev_mr.r.get_chrom().empty())){
-                        prev_mr = samr.mr;
+                    //if prev_gr is empty, fill this first.
+                    if ((prev_gr.get_chrom() == "(NULL)")){
+                    //if (loop == 1){
+                        prev_gr = samr.mr.r;
                         ++n_reads;
-                        if(temp.size() < n_reads)
-                        temp.resize(n_reads, 0.0);
-                        //add to temporary holding vector
-                        temp[n_reads - 1] = samr;
+                        
+                        cerr << "putting first element in the queue. start pos: "
+                        << prev_gr.get_start() << "end pos: " << prev_gr.get_end()
+                        << "chrom: " << prev_gr.get_chrom() <<endl;
+                        leftmate_pq.push(prev_gr);
+                        //loop++;
                     }
                     
                     //if prev_mr is not empty,
                     else{
                         //then we can go ahead and fill curr_mr
-                        curr_mr = samr.mr;
+                        curr_gr = samr.mr.r;
                         
+                        
+                        cerr << "next element in SAMRecord read in. start pos: "
+                        << curr_gr.get_start() << "end pos: " << curr_gr.get_end()
+                        << "chrom: " << prev_gr.get_chrom() <<endl;
+
                         //if these have the same starting position
-                        if(curr_mr.r.get_start() == prev_mr.r.getstart()){
+                        if((prev_gr.same_chrom(curr_gr)) &&
+                           (curr_gr.get_start() == prev_gr.get_start())){
                             ++n_reads;
+                        cerr << "putting next element in the queue. start pos: "
+                            << curr_gr.get_start() << "end pos: "
+                            << curr_gr.get_end() << "chrom: "
+                            << prev_gr.get_chrom() <<endl;
+                            leftmate_pq.push(curr_gr);
                             
-                            if(temp.size() < n_reads)
-                            temp.resize(n_reads, 0.0);
-                            //add to temporary holding vector
-                            temp[n_reads - 1] = samr;
+                            prev_gr.swap(curr_gr);
                             
                         }
                         
-                        //otherwise, if these reads don't have the same starting position..
-                        //we can now work with comparing whats in our current "group" of reads
+                        //otherwise, if the next read doesn't
+                        //have the same starting position..
+                        //we can now work with comparing whats
+                        //in our current "group" of reads
                         else{
-                           //sort reads in temp by right pos
-                           //with first element having the earliest start position
-                            temp = mergeSort(temp);
+                            
+                            //BELOW: compare consecutive reads in the queue//
                             
                             
-                             /*****compare reads in priority queue & update counts hist below*****/
-                            
-                            std::priority_queue<SAMRecord, vector<SAMRecord>, LeftMateRightPosCheck<SAMRecord> leftmate_pq;
-                            
-                            //fill priority queue
-                            for(size_t i = 0, i < temp.size(), i++){
-                                leftmate_pq.push(temp[i]);
+                            prev_gr_comp = leftmate_pq.top();
+                            leftmate_pq.pop();
+                            cerr << "first element in the queue, its end position: "
+                            << prev_gr_comp.get_end() << "chrom: "
+                            << prev_gr.get_chrom() <<endl;
+                    
+                            //if there was only one read in the queue
+                            if(leftmate_pq.empty()){
+                                ++counts_hist[1];
                             }
                             
-                            
-                            //compare consecutive reads in the queue
-                            if(temp.size() > 0){
-                                prev_mr_comp = leftmate_pq.top().mr;
-                                leftmate_pq.pop();
+                            //otherwise, if there are more reads in this "group"
+                            else{
                                 while(!leftmate_pq.empty()){
-                                    curr_mr_comp = leftmate_pq.top().mr;
+                                    curr_gr_comp = leftmate_pq.top();
                                     leftmate_pq.pop();
                                     
-                                    //update counts hist
-                                    update_pe_duplicate_counts_hist(curr_mr_comp, prev_mr_comp, input_file_name, counts_hist, current_count);
-                                    prev_mr_comp.swap(curr_mr_comp);
                                     
-                                }//end while loop
-                                ++counts_hist[current_count];
+                                    cerr << "next element in the queue, its end position: "
+                                    << curr_gr_comp.get_end() << "chrom: "
+                                    << prev_gr.get_chrom() <<endl;
+                                    
+                                    //update counts hist
+                                    update_pe_duplicate_counts_hist(curr_gr_comp,
+                                                                    prev_gr_comp,
+                                                                    input_file_name,
+                                                                    counts_hist,
+                                                                    current_count);
+                                    prev_gr_comp.swap(curr_gr_comp);
+                                    
+                                    //somewhere in this loop, the error occurs for 300k reads. ***glib c detected***
+                                }
+                                //end while loop
                                 
+                                
+                                if(counts_hist.size() < current_count + 1)
+                                    counts_hist.resize(current_count + 1, 0.0);
+                                
+                            ++counts_hist[current_count];
+                            }
+                        
+                            if(leftmate_pq.empty()){
+                                cerr << "queue is now empty" << endl;
                             }
                             
+                        
+                            
+                            //HERE IS WHERE THE ERROR OCCURS WITH A 5 PERCENT DOWNSAMPLE (about 13 mil reads):///
+                            //prev_gr = samr.mr.r;  --->>>> error
+                            prev_gr = curr_gr;  //--->>>>>error
+                            //error occurs after around 34000 reads. ***glib c detected *** ....... double free or corruption (out)
                             
                             
+                            
+                            
+                            
+                           // prev_gr.swap(curr_gr); //still running, it's been 20 hours.
+                            
+                            
+                            
+                            
+                            cerr << "success: prev_gr equals next read" << endl;
+                            ++n_reads;
+                            leftmate_pq.push(prev_gr);
+                            cerr << "success: new read added to queue" <<endl;
+                            cerr << "new queue, new first element in queue, start pos: "
+                            << leftmate_pq.top().get_start() << endl;
                             current_count = 1;
-                            //clear out temp vector for new "group" of reads
-                            //with same left position
-                            temp.clear();
-                            prev_mr = samr.mr;
-                            n_reads = 1; //reset the number of reads
-                            if(temp.size() < n_reads)
-                                temp.resize(n_reads, 0.0);
-                            temp[n_reads - 1] = samr;
+                            
+                            //HERE INSTEAD IS WHERE ERROR OCCURS WITH A 1 PERCENT DOWNSAMPLE (about 2.5 mil reads):///
+                            //with the use of prev_gr = curr_gr --->>>>error
+                            //error occurs around 6700 reads. Segmentation Fault
+                            
+                            //similar errors with 500k reads, and 1m reads (100, 200, 1k, 10k, 100k reads all construct the histogram properly)
+                            //500k reads: error occurs around 3300 reads, Segmentation Fault
+                            //1m reads: error occurs around 6600 reads, Segmentation Fault
                             
                             
+                            //NOTE: both errors are on chr 10, at around the same position (5% case: 20215014 end pos, 1% case: 20215767) 
+                            //5% case, 13 mil reads: 20215014 end pos
+                            //1% case, 2.5 mil reads: 20215767 end pos
+                            //500k reads: 20230155 end pos
+                            //1m reads: 20230227 end pos
+
                         }
-                    }
+                    }//end statement for this group of reads.
                                  
                   
                 }//end if seg len
@@ -498,119 +584,7 @@ load_counts_BAM_pe(const string &input_file_name,
         }//end if primary & mapped
     }//end while loop
     
-    
-    /*
-
-  while (sam_reader >> samr, sam_reader.is_good()) {
-    if(samr.is_primary && samr.is_mapped)
-	// only convert mapped and primary reads
-      { // ignore unmapped reads & secondary alignments
-          if(samr.is_mapping_paired)
-          { //only count paired reads
-
-              const string read_name
-                = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size());
-              if (dangling_mates.find(read_name) != dangling_mates.end())
-            // other end is in dangling mates, merge the two mates
-              {
-                  assert(same_read(0, samr.mr, dangling_mates[read_name].mr));
-                  if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
-                  revcomp(samr.mr);
-
-                  MappedRead merged_mr;
-                  int len = 0;
-                  merge_mates(MAX_SEGMENT_LENGTH, dangling_mates[read_name].mr, 
-                              samr.mr, merged_mr, len);
-                  curr_mr = merged_mr;
-		  // check if we have read any reads in yet, if yes update hist
-                  if(!(prev_mr.r.get_chrom().empty()))
-		      update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-		  // haven't read any reads in yet
-                  else
-                      current_count = 1;
-
-                  ++n_reads;
-                  prev_mr = curr_mr;
-              }
-              else{// other end not in dangling mates, put in dangling mates for merging
-                  dangling_mates[read_name] = samr;
-                  ++n_reads;
-                ////after Tim fixes the algorithm, add in ++n_reads; here too///
-              }
-
-          }
-          else // mapping is not paired
-              if(samr.is_Trich){ // only consider one end
-                  curr_mr = samr.mr;
-		  // check if we have read any reads in yet, if yes update hist
-                  if(!(prev_mr.r.get_chrom().empty()))
-		      update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-		  // haven't read any reads in yet
-                  else
-                      current_count = 1;
-
-                  ++n_reads;
-                  prev_mr = curr_mr;
-              }
-          
-          
-	// dangling mates is too large, flush dangling_mates of reads
-	// on different chroms and too far away 
-          if (dangling_mates.size() > 5000)
-          {
-              using std::tr1::unordered_map;
-              unordered_map<string, SAMRecord> tmp;
-              for (unordered_map<string, SAMRecord>::iterator
-                   itr = dangling_mates.begin();
-                   itr != dangling_mates.end(); ++itr){
-                  if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
-                      || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
-                          && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
-                        samr.mr.r.get_start()))
-                  {
-                      if (!itr->second.is_Trich) {
-                          revcomp(itr->second.mr);
-                          curr_mr = itr->second.mr;
-			  // check if we have read any reads in yet, if yes update hist
-			  if(!(prev_mr.r.get_chrom().empty()))
-			    update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-			  // haven't read any reads in yet
-			  else
-			    current_count = 1;
-			  
-			  ++n_reads;
-			  prev_mr = curr_mr;
-                      }
-
-                  }
-                  else
-                      tmp[itr->first] = itr->second;
-                  std::swap(tmp, dangling_mates);
-              }
-	    
-              
-	  
-          }
-      }
-  } ////THIS IS WHERE THE WHILE LOOP ENDS//////
-    */
-    
-    //to account for the last read
-    ++counts_hist[current_count];
-    
-    
-    // flushing dangling_mates of all remaining ends
-    while (!dangling_mates.empty()) {
-      if (!dangling_mates.begin()->second.is_Trich){
-        revcomp(dangling_mates.begin()->second.mr);
-	curr_mr = dangling_mates.begin()->second.mr;
-	update_pe_duplicate_counts_hist(curr_mr, prev_mr, input_file_name, counts_hist, current_count);
-	++n_reads;
-	prev_mr = curr_mr;
-      }
-
-      dangling_mates.erase(dangling_mates.begin());
-    }
+        cerr << "counts histogram successfully created" << endl;
     
   return n_reads;
 }
@@ -664,18 +638,22 @@ load_counts_BED_se(const string input_file_name, vector<double> &counts_hist) {
   size_t current_count = 1;
     
   while (in >> curr_gr) {
-    update_se_duplicate_counts_hist(curr_gr, prev_gr, input_file_name, counts_hist, current_count);
+    update_se_duplicate_counts_hist(curr_gr, prev_gr, input_file_name,
+                                    counts_hist, current_count);
     ++n_reads;
     prev_gr.swap(curr_gr);
   }
     
     
 // to account for the last read compared to the one before it.
+  if(counts_hist.size() < current_count + 1)
+        counts_hist.resize(current_count + 1, 0.0);
   ++counts_hist[current_count];
 
   return n_reads;
 }
 
+/*
 static void
 update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
 				const GenomicRegion &prev_gr,
@@ -704,6 +682,7 @@ update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
   else // next read is same, update current_count
     ++current_count;
 }
+*/
 
 static size_t
 load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
@@ -725,10 +704,14 @@ load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
     
 //read in file and compare each gr with the one before it
  while (in >> curr_gr) {
-   update_pe_duplicate_counts_hist(curr_gr, prev_gr, input_file_name, counts_hist, current_count);
+   update_pe_duplicate_counts_hist(curr_gr, prev_gr, input_file_name,
+                                   counts_hist, current_count);
     ++n_reads;
     prev_gr.swap(curr_gr);
   }
+    
+ if(counts_hist.size() < current_count + 1)
+        counts_hist.resize(current_count + 1, 0.0);
     
  // to account for the last read compared to the one before it.
  ++counts_hist[current_count];
@@ -748,7 +731,7 @@ load_counts(const string input_file_name, vector<double> &counts_hist) {
 
   std::ifstream in(input_file_name.c_str());
   if (!in) // if file doesn't open 
-    throw SMITHLABException("problem opening file: " + input_file_name); //error message
+    throw SMITHLABException("problem opening file: " + input_file_name); 
 
   size_t n_reads = 0; 
   while(!in.eof()){ 
@@ -929,7 +912,8 @@ resample_hist(const gsl_rng *rng, const vector<size_t> &vals_hist_distinct_count
   vector<unsigned int> sample_distinct_counts_hist(distinct_counts_hist.size(), 0);
 
   const unsigned int distinct = 
-    static_cast<unsigned int>(accumulate(distinct_counts_hist.begin(), distinct_counts_hist.end(), 0.0));
+    static_cast<unsigned int>(accumulate(distinct_counts_hist.begin(),
+                                         distinct_counts_hist.end(), 0.0));
   
   gsl_ran_multinomial(rng, distinct_counts_hist.size(), distinct,
 		      &distinct_counts_hist.front(), 
