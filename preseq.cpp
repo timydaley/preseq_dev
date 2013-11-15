@@ -403,7 +403,6 @@ load_counts_BAM_pe(const string &input_file_name,
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
   size_t current_count = 1;
-   // int loop = 1;
 
   GenomicRegion prev_gr, curr_gr, prev_gr_comp, curr_gr_comp;
   /*  if ((prev_gr.get_chrom().empty())){
@@ -447,15 +446,15 @@ load_counts_BAM_pe(const string &input_file_name,
                     
                     //if prev_gr is empty, fill this first.
                     if ((prev_gr.get_chrom() == "(NULL)")){
-                    //if (loop == 1){
+                    
                         prev_gr = samr.mr.r;
                         ++n_reads;
                         
-                        cerr << "putting first element in the queue. start pos: "
-                        << prev_gr.get_start() << "end pos: " << prev_gr.get_end()
-                        << "chrom: " << prev_gr.get_chrom() <<endl;
+                       
+                       
+                     
                         leftmate_pq.push(prev_gr);
-                        //loop++;
+                         
                     }
                     
                     //if prev_mr is not empty,
@@ -464,18 +463,18 @@ load_counts_BAM_pe(const string &input_file_name,
                         curr_gr = samr.mr.r;
                         
                         
-                        cerr << "next element in SAMRecord read in. start pos: "
-                        << curr_gr.get_start() << "end pos: " << curr_gr.get_end()
-                        << "chrom: " << prev_gr.get_chrom() <<endl;
+                       
+                       
+                       
 
                         //if these have the same starting position
                         if((prev_gr.same_chrom(curr_gr)) &&
                            (curr_gr.get_start() == prev_gr.get_start())){
                             ++n_reads;
-                        cerr << "putting next element in the queue. start pos: "
-                            << curr_gr.get_start() << "end pos: "
-                            << curr_gr.get_end() << "chrom: "
-                            << prev_gr.get_chrom() <<endl;
+                   
+                     
+                       
+                         
                             leftmate_pq.push(curr_gr);
                             
                             prev_gr.swap(curr_gr);
@@ -493,9 +492,9 @@ load_counts_BAM_pe(const string &input_file_name,
                             
                             prev_gr_comp = leftmate_pq.top();
                             leftmate_pq.pop();
-                            cerr << "first element in the queue, its end position: "
-                            << prev_gr_comp.get_end() << "chrom: "
-                            << prev_gr.get_chrom() <<endl;
+             
+               
+                            
                     
                             //if there was only one read in the queue
                             if(leftmate_pq.empty()){
@@ -509,9 +508,9 @@ load_counts_BAM_pe(const string &input_file_name,
                                     leftmate_pq.pop();
                                     
                                     
-                                    cerr << "next element in the queue, its end position: "
-                                    << curr_gr_comp.get_end() << "chrom: "
-                                    << prev_gr.get_chrom() <<endl;
+       
+         
+        
                                     
                                     //update counts hist
                                     update_pe_duplicate_counts_hist(curr_gr_comp,
@@ -521,7 +520,6 @@ load_counts_BAM_pe(const string &input_file_name,
                                                                     current_count);
                                     prev_gr_comp.swap(curr_gr_comp);
                                     
-                                    //somewhere in this loop, the error occurs for 300k reads. ***glib c detected***
                                 }
                                 //end while loop
                                 
@@ -532,48 +530,23 @@ load_counts_BAM_pe(const string &input_file_name,
                             ++counts_hist[current_count];
                             }
                         
-                            if(leftmate_pq.empty()){
-                                cerr << "queue is now empty" << endl;
-                            }
+ 
+                            
+                            
                             
                         
                             
-                            //HERE IS WHERE THE ERROR OCCURS WITH A 5 PERCENT DOWNSAMPLE (about 13 mil reads):///
-                            //prev_gr = samr.mr.r;  --->>>> error
-                            prev_gr = curr_gr;  //--->>>>>error
-                            //error occurs after around 34000 reads. ***glib c detected *** ....... double free or corruption (out)
+                            prev_gr = curr_gr;  
                             
                             
-                            
-                            
-                            
-                           // prev_gr.swap(curr_gr); //still running, it's been 20 hours.
-                            
-                            
-                            
-                            
-                            cerr << "success: prev_gr equals next read" << endl;
+ 
                             ++n_reads;
                             leftmate_pq.push(prev_gr);
-                            cerr << "success: new read added to queue" <<endl;
-                            cerr << "new queue, new first element in queue, start pos: "
-                            << leftmate_pq.top().get_start() << endl;
+                            
+ 
+  
                             current_count = 1;
                             
-                            //HERE INSTEAD IS WHERE ERROR OCCURS WITH A 1 PERCENT DOWNSAMPLE (about 2.5 mil reads):///
-                            //with the use of prev_gr = curr_gr --->>>>error
-                            //error occurs around 6700 reads. Segmentation Fault
-                            
-                            //similar errors with 500k reads, and 1m reads (100, 200, 1k, 10k, 100k reads all construct the histogram properly)
-                            //500k reads: error occurs around 3300 reads, Segmentation Fault
-                            //1m reads: error occurs around 6600 reads, Segmentation Fault
-                            
-                            
-                            //NOTE: both errors are on chr 10, at around the same position (5% case: 20215014 end pos, 1% case: 20215767) 
-                            //5% case, 13 mil reads: 20215014 end pos
-                            //1% case, 2.5 mil reads: 20215767 end pos
-                            //500k reads: 20230155 end pos
-                            //1m reads: 20230227 end pos
 
                         }
                     }//end statement for this group of reads.
