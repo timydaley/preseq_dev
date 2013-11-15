@@ -282,88 +282,15 @@ update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
 
 
 
-////////merge sort functions, used in load_counts_BAM_pe////////////
-/*
-
-vector<SAMRecord> merge(vector<SAMRecord> left, vector<SAMRecord> right)
-{
-    vector<SAMRecord> result;
-    //while there are still elements left in either the left or right vector
-    while ((int)left.size() > 0 || (int)right.size() > 0) {
-        
-        //if there are still elements left in both the vectors
-        if ((int)left.size() > 0 && (int)right.size() > 0) {
-            
-            //if the right position of the first read in our left vector is 
-            //before the right pos of the first read in our right vector
-            if (left.front.mr.r.get_end() <= right.front.mr.r.get_end()) {
-                result.push_back(left.front());
-                left.erase(left.begin());
-            }
-            //other wise, if the right position of the first read in the
-            //other vector is first
-            else {
-                result.push_back((int)right.front());
-                right.erase(right.begin());
-            }
-        
-       
-        }
-        else if ((int)left.size() > 0) {
-            for (int i = 0; i < (int)left.size(); i++)
-                result.push_back(left[i]);
-            break;
-        }
-        
-        else if ((int)right.size() > 0) {
-            for (int i = 0; i < (int)right.size(); i++)
-                result.push_back(right[i]);
-            break;
-        }
-    }
-    return result;
-}
-
-
-//recursive merge sort 
-vector<SAMRecord> mergeSort(vector<SAMRecord> m)
-{
-    //if there's only one element, no need to sort
-    if (m.size() <= 1)
-        return m;
-    
-    vector<SAMRecord> left, right, result;
-    int middle = ((int)m.size()+ 1) / 2;
-    
-    
-    //splitting the vector of SAM records into two
-    for (int i = 0; i < middle; i++) {
-        left.push_back(m[i]);
-    }
-    
-    for (int i = middle; i < (int)m.size(); i++) {
-        right.push_back(m[i]);
-    }
-    
-    //recursively sort and merge. 
-    
-    left = mergeSort(left);
-    right = mergeSort(right);
-    result = merge(left, right);
-    
-    return result;
-}*/
-/////////////////end merge sort functions///////////////////
-
-
 /////comparison function for priority queue/////////////////
 
 
 /****check this later or get Andrew or Tim to check it****/
 
+// TD: switched this, but I don't think it matters.
 static inline bool
 end_before(const GenomicRegion &a, const GenomicRegion &b) {
-    return b.get_end() < a.get_end();
+    return a.get_end() < b.get_end();
 }
 
 
@@ -372,6 +299,7 @@ same_start(const GenomicRegion &a, const GenomicRegion &b) {
     return a.get_start() == b.get_start();
 }
 
+// why implement this as a struct?
 struct LeftMateRightPosCheck {
     bool operator()(const GenomicRegion &prev, const GenomicRegion &curr) const {
         return start_check(prev, curr);
@@ -394,6 +322,7 @@ load_counts_BAM_pe(const string &input_file_name,
 		   vector<double> &counts_hist) {
     
   SAMReader sam_reader(input_file_name, mapper);   
+  // check sam_reader
   if(!(sam_reader.is_good()))
     throw SMITHLABException("problem opening input file " + input_file_name);
   
@@ -402,7 +331,7 @@ load_counts_BAM_pe(const string &input_file_name,
     // resize vals_hist, make sure it starts out empty
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
-  size_t current_count = 1;
+  size_t current_count = 0;
 
   GenomicRegion prev_gr, curr_gr, prev_gr_comp, curr_gr_comp;
   /*  if ((prev_gr.get_chrom().empty())){
@@ -445,40 +374,29 @@ load_counts_BAM_pe(const string &input_file_name,
                 if(samr.seg_len > 0){
                     
                     //if prev_gr is empty, fill this first.
+		  // will only happen in first iteration
                     if ((prev_gr.get_chrom() == "(NULL)")){
-                    
                         prev_gr = samr.mr.r;
+			// TD: gr length is seg_len
+			prev_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
                         ++n_reads;
-                        
-                       
-                       
-                     
-                        leftmate_pq.push(prev_gr);
-                         
+			current_count = 1;
+			leftmate_pq.push(prev_gr);
                     }
                     
                     //if prev_mr is not empty,
+		    //TD: should we not check first?		   
                     else{
                         //then we can go ahead and fill curr_mr
-                        curr_gr = samr.mr.r;
-                        
-                        
-                       
-                       
-                       
-
+                        curr_gr = samr.mr.r;  
+			// TD: gr length is seg_len                      
+			curr_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
                         //if these have the same starting position
                         if((prev_gr.same_chrom(curr_gr)) &&
                            (curr_gr.get_start() == prev_gr.get_start())){
-                            ++n_reads;
-                   
-                     
-                       
-                         
+                            ++n_reads;                                                                       
                             leftmate_pq.push(curr_gr);
-                            
-                            prev_gr.swap(curr_gr);
-                            
+                            prev_gr.swap(curr_gr);                           
                         }
                         
                         //otherwise, if the next read doesn't
@@ -486,15 +404,9 @@ load_counts_BAM_pe(const string &input_file_name,
                         //we can now work with comparing whats
                         //in our current "group" of reads
                         else{
-                            
-                            //BELOW: compare consecutive reads in the queue//
-                            
-                            
+                             //BELOW: compare consecutive reads in the queue//
                             prev_gr_comp = leftmate_pq.top();
                             leftmate_pq.pop();
-             
-               
-                            
                     
                             //if there was only one read in the queue
                             if(leftmate_pq.empty()){
@@ -507,12 +419,7 @@ load_counts_BAM_pe(const string &input_file_name,
                                     curr_gr_comp = leftmate_pq.top();
                                     leftmate_pq.pop();
                                     
-                                    
-       
-         
-        
-                                    
-                                    //update counts hist
+                                           //update counts hist
                                     update_pe_duplicate_counts_hist(curr_gr_comp,
                                                                     prev_gr_comp,
                                                                     input_file_name,
@@ -526,25 +433,15 @@ load_counts_BAM_pe(const string &input_file_name,
                                 
                                 if(counts_hist.size() < current_count + 1)
                                     counts_hist.resize(current_count + 1, 0.0);
-                                
+				// TD: didn't we update it before?                            
                             ++counts_hist[current_count];
-                            }
-                        
- 
-                            
-                            
-                            
-                        
+                            }      
                             
                             prev_gr = curr_gr;  
-                            
-                            
- 
+                             
                             ++n_reads;
                             leftmate_pq.push(prev_gr);
-                            
- 
-  
+                              
                             current_count = 1;
                             
 
