@@ -315,7 +315,6 @@ struct LeftMateRightPosCheck {
 
 
 
-
 static size_t
 load_counts_BAM_pe(const string &input_file_name, 
 		   const size_t MAX_SEGMENT_LENGTH,
@@ -333,128 +332,93 @@ load_counts_BAM_pe(const string &input_file_name,
   counts_hist.resize(2, 0.0);
   size_t current_count = 0;
 
-  GenomicRegion prev_gr, curr_gr, prev_gr_comp, curr_gr_comp;
-  /*  if ((prev_gr.get_chrom().empty())){
-        cerr << "prev_gr is empty" << endl;
-    }
-        else{
-        cerr << "prev_gr contains" << prev_gr.get_chrom();
-        }
-        if ((curr_gr.get_chrom().empty())){
-            cerr << "curr_gr is empty" << endl;
-        }
-        else{
-            cerr << "curr_gr contains" << curr_gr.get_chrom();
-        }
-        if ((prev_gr_comp.get_chrom().empty())){
-            cerr << "prev_gr_comp is empty" << endl;
-        }
-        else{
-            cerr << "prev_gr_comp contains" << prev_gr_comp.get_chrom();
-        }
-        if((curr_gr_comp.get_chrom().empty())){
-            cerr << "curr_gr_comp is empty" << endl;
-        }
-        else {
-            cerr <<"curr_gr_comp contains" << curr_gr_comp.get_chrom();
-        }*/
+  GenomicRegion prev_gr, curr_gr;
     
   std::priority_queue<GenomicRegion, vector<GenomicRegion>,
     LeftMateRightPosCheck> leftmate_pq;
     
-    while (sam_reader >> samr, sam_reader.is_good()) {
-         // only convert mapped and primary reads
-        // ignore unmapped reads & secondary alignments
-        if(samr.is_primary && samr.is_mapped)
-        {
-            //only count paired end reads
-            if(samr.is_mapping_paired)
-            {
-                //only count left mate (template length > 0)
-                if(samr.seg_len > 0){
+  while (sam_reader >> samr, sam_reader.is_good()) {
+    // only convert mapped and primary reads
+    // ignore unmapped reads & secondary alignments
+    if(samr.is_primary && samr.is_mapped){
+      // only count left mate
+      // either template length > 0 or = 0 and is Trich
+      if((samr.is_mapping_paired && samr.seg_len > 0) || 
+	 (!(samr.is_mapping_paired) && samr.seg_len == 0)){
                     
-                    //if prev_gr is empty, fill this first.
-		  // will only happen in first iteration
-                    if ((prev_gr.get_chrom() == "(NULL)")){
-                        prev_gr = samr.mr.r;
-			// TD: gr length is seg_len
-			prev_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
-                        ++n_reads;
-			current_count = 1;
-			leftmate_pq.push(prev_gr);
-                    }
+	//if prev_gr is empty, fill this first.
+	//will only happen in first iteration
+	if ((prev_gr.get_chrom() == "(NULL)")){
+	  prev_gr = samr.mr.r;
+	  //TD: gr length is seg_len if paired
+	  if(samr.seg_len > 0)
+	    prev_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
+	  current_count = 1;
+	  leftmate_pq.push(prev_gr);
+	}
                     
-                    //if prev_mr is not empty,
-		    //TD: should we not check first?		   
-                    else{
-                        //then we can go ahead and fill curr_mr
-                        curr_gr = samr.mr.r;  
-			// TD: gr length is seg_len                      
-			curr_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
-                        //if these have the same starting position
-                        if((prev_gr.same_chrom(curr_gr)) &&
-                           (curr_gr.get_start() == prev_gr.get_start())){
-                            ++n_reads;                                                                       
-                            leftmate_pq.push(curr_gr);
-                            prev_gr.swap(curr_gr);                           
-                        }
-                        
-                        //otherwise, if the next read doesn't
-                        //have the same starting position..
-                        //we can now work with comparing whats
-                        //in our current "group" of reads
-                        else{
-                             //BELOW: compare consecutive reads in the queue//
-                            prev_gr_comp = leftmate_pq.top();
-                            leftmate_pq.pop();
+	//if prev_mr is not empty,
+	else{
+	  //then we can go ahead and fill curr_mr
+	  curr_gr = samr.mr.r;  
+	  // TD: gr length is seg_len if paired
+	  if(samr.seg_len > 0)                      
+	    curr_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
+	  //if these have the same starting position
+	  if((prev_gr.same_chrom(curr_gr)) &&
+	     (curr_gr.get_start() == prev_gr.get_start())){
+	    //put read in priority queue for later comparison
+	    leftmate_pq.push(curr_gr);
+	    prev_gr.swap(curr_gr);                           
+	  }
+	  //otherwise, if the next read doesn't
+	  //have the same starting position..
+	  //we can now work with comparing what is
+	  //in our current "group" of reads
+	  else{
+	    assert(!(leftmate_pq.empty()));
+	    //BELOW: compare consecutive reads in the queue
+	    GenomicRegion prev_gr_comp = leftmate_pq.top();
+	    leftmate_pq.pop();
                     
-                            //if there was only one read in the queue
-                            if(leftmate_pq.empty()){
-                                ++counts_hist[1];
-                            }
+	    //if there was only one read in the queue
+	    if(leftmate_pq.empty()){
+	      ++counts_hist[1];
+	    }
                             
-                            //otherwise, if there are more reads in this "group"
-                            else{
-                                while(!leftmate_pq.empty()){
-                                    curr_gr_comp = leftmate_pq.top();
-                                    leftmate_pq.pop();
+	    // otherwise, if there are more reads in this "group"
+	    else{
+	      while(!leftmate_pq.empty()){
+		GenomicRegion curr_gr_comp = leftmate_pq.top();
+		leftmate_pq.pop();
                                     
-                                           //update counts hist
-                                    update_pe_duplicate_counts_hist(curr_gr_comp,
-                                                                    prev_gr_comp,
-                                                                    input_file_name,
-                                                                    counts_hist,
-                                                                    current_count);
-                                    prev_gr_comp.swap(curr_gr_comp);
-                                    
-                                }
-                                //end while loop
-                                
-                                
-                                if(counts_hist.size() < current_count + 1)
-                                    counts_hist.resize(current_count + 1, 0.0);
-				// TD: didn't we update it before?                            
-                            ++counts_hist[current_count];
-                            }      
+		//update counts hist
+		update_pe_duplicate_counts_hist(curr_gr_comp, prev_gr_comp,
+						input_file_name, counts_hist,
+						current_count);
+		prev_gr_comp.swap(curr_gr_comp);
+	      }
+	      if(counts_hist.size() < current_count + 1)
+		counts_hist.resize(current_count + 1, 0.0);
+	      ++counts_hist[current_count];
+	    }
+	    // end while priority queue loop
                             
-                            prev_gr = curr_gr;  
-                             
-                            ++n_reads;
-                            leftmate_pq.push(prev_gr);
-                              
-                            current_count = 1;
-                            
+	    prev_gr.swap(curr_gr);  
+	    leftmate_pq.push(prev_gr);
+	    current_count = 1;
+	  }
 
-                        }
-                    }//end statement for this group of reads.
+	}
+	//end statement for this group of reads.
                                  
-                  
-                }//end if seg len
-            }//end if map paired
-        }//end if primary & mapped
-    }//end while loop
+	++n_reads;      
+      }//end if seg len
+           
+    }//end if primary & mapped
+  }//end while loop
     
-        cerr << "counts histogram successfully created" << endl;
+  cerr << "counts histogram successfully created" << endl;
     
   return n_reads;
 }
@@ -1169,6 +1133,12 @@ lc_extrap(const bool VERBOSE,
 	cerr << i << '\t' << counts_hist[i] << endl;
     cerr << endl;
   }
+
+  size_t total_reads = 0;
+  for(size_t i = 0; i < counts_hist.size(); i++)
+    total_reads += i*counts_hist[i];
+
+  assert(total_reads == n_reads);
     
   // catch if all reads are distinct or sample sufficiently deep
   if (max_observed_count < MIN_REQUIRED_COUNTS)
@@ -1344,6 +1314,18 @@ static void c_curve (const bool VERBOSE,
 	cerr << i << '\t' << counts_hist[i] << endl;
     cerr << endl;
   }
+
+  size_t total_reads = 0;
+  for(size_t i = 0; i < counts_hist.size(); i++)
+    total_reads += i*counts_hist[i];
+
+  if(total_reads != n_reads){
+    cerr << "total reads = " << total_reads << endl;
+    cerr << "n_reads     = " << n_reads << endl;
+  }
+
+  assert(total_reads == n_reads);
+
 
    //construct umi vector to sample from
   vector<size_t> full_umis;

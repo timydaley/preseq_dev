@@ -146,7 +146,7 @@ main(int argc, const char **argv) {
     string outfile;
     string mapper = "general";
     size_t MAX_SEGMENT_LENGTH = 1000;
-    size_t suffix_len = 1;
+    size_t suffix_len = 0;
     bool VERBOSE = false;
     
     /****************** COMMAND LINE OPTIONS ********************/
@@ -156,10 +156,7 @@ main(int argc, const char **argv) {
                            "sam/bam_file");
     opt_parse.add_opt("output", 'o', "Name of output file", 
                       false, outfile);
-    opt_parse.add_opt("mapper", 'm',
-                      "Original mapper: bsmap, bismark, bsseeker, or general", 
-                      true, mapper);
-    opt_parse.add_opt("suff", 's', "read name suffix length (default: 1)",
+    opt_parse.add_opt("suff", 's', "read name suffix length (default: 0)",
                       false, suffix_len); 
     opt_parse.add_opt("max-frag", 'L', "maximum allowed insert size", 
                       false, MAX_SEGMENT_LENGTH); 
@@ -206,19 +203,16 @@ main(int argc, const char **argv) {
 
     while ((sam_reader >> samr, sam_reader.is_good()))
     {
-      if(samr.is_primary && samr.is_mapped)
+      if(samr.is_primary && samr.is_mapped){
 	// only convert mapped and primary reads
-      {
 
-	if (samr.is_mapping_paired)
-        {
+	if (samr.is_mapping_paired){
 
 	  const string read_name
 	    = samr.mr.r.get_name().substr(
 	      0, samr.mr.r.get_name().size() - suffix_len);
-	  if (dangling_mates.find(read_name) != dangling_mates.end())
+	  if (dangling_mates.find(read_name) != dangling_mates.end()){
 	    // other end is in dangling mates, merge the two mates
-          {
 	    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
 	    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
 	    revcomp(samr.mr);
@@ -243,6 +237,9 @@ main(int argc, const char **argv) {
 	  // on different chroms and too far away 
 	  if (dangling_mates.size() > 5000)
 	  {
+	    if(VERBOSE)
+	      cerr << "dangling mates too large, emptying" << endl;
+
 	    using std::tr1::unordered_map;
 	    unordered_map<string, SAMRecord> tmp;
 	    for (unordered_map<string, SAMRecord>::iterator
@@ -254,7 +251,8 @@ main(int argc, const char **argv) {
 		      samr.mr.r.get_start()))
 		{
 		  if (!itr->second.is_Trich) revcomp(itr->second.mr);
-		  out << itr->second.mr << endl;
+		  if(itr->second.seg_len >= 0)
+		    out << itr->second.mr << endl;
 		}
 	      else
 		tmp[itr->first] = itr->second;
@@ -262,10 +260,11 @@ main(int argc, const char **argv) {
 	    std::swap(tmp, dangling_mates);
 	  }
 	}
-	else // unpaired, output read
-	{
-	  if (!samr.is_Trich) revcomp(samr.mr);
-	  out << samr.mr << endl;
+	else{ 
+	  // unpaired, output read
+      	  if (!samr.is_Trich) revcomp(samr.mr);
+	  if(samr.seg_len == 0)
+	    out << samr.mr << endl;
 	}
       }
       ++count;
@@ -277,6 +276,10 @@ main(int argc, const char **argv) {
     }
 
     // flushing dangling_mates of all remaining ends
+    if(!(dangling_mates.empty()) && VERBOSE){
+      cerr << "dangling mates not empty" << endl;
+      cerr << "dangling_mates.size = " << dangling_mates.size() << endl;
+    }
     while (!dangling_mates.empty()) {
       if (!dangling_mates.begin()->second.is_Trich)
         revcomp(dangling_mates.begin()->second.mr);
