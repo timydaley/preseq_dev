@@ -93,7 +93,6 @@ struct GenomicRegionOrderChecker {
 };
 
 
-
 // probabilistically split genomic regions into mutiple
 // genomic regions of width equal to bin_size
 static void
@@ -133,8 +132,8 @@ SplitGenomicRegion(const GenomicRegion &inputGR,
       outputGRs.push_back(binned_gr);
     }
   }
-
 }
+
 
 // split a mapped read into multiple genomic regions
 // based on the number of bases in each
@@ -201,11 +200,23 @@ GenomicRegionIsNull(const GenomicRegion &gr){
   return false;
 }
 
+// extend the read by increasing the end pos by n_bases
+static void
+ExtendMappedRead(const size_t n_bases, 
+		 MappedRead &mr){
+  size_t curr_end = mr.r.get_end();
+  mr.r.set_end(curr_end + n_bases);
+  mr.seq.resize(mr.seq.size() + n_bases, '_');
+  mr.scr.resize(mr.scr.size() + n_bases, 'B');
+}
+
+
 static size_t
 load_values_MR(const bool VERBOSE,
 	       const string input_file_name, 
 	       const size_t bin_size,
-	       size_t max_width,
+	       const size_t max_width,
+	       const size_t n_bases_extend, 
 	       vector<double> &vals_hist) {
 
   srand(time(0) + getpid());
@@ -232,6 +243,8 @@ load_values_MR(const bool VERBOSE,
       cerr << "Encountered read of width " << mr.r.get_width() << endl;
       throw SMITHLABException("max_width set too small.");
     }
+
+    ExtendMappedRead(n_bases_extend, mr);
 
     vector<GenomicRegion> splitGRs;
     SplitMappedRead(VERBOSE, mr, runif, bin_size, splitGRs);  
@@ -311,10 +324,21 @@ load_values_MR(const bool VERBOSE,
 }
 
 
+// extend the read by increasing the end pos by n_bases
+static void
+ExtendGenomicRegion(const size_t n_bases,
+		    GenomicRegion &gr){
+  GenomicRegion outputGR = gr;
+  outputGR.set_end(gr.get_end() + n_bases);
+  gr.swap(outputGR);
+}
+
+
 static size_t
 load_values_GR(const string input_file_name, 
 	       const size_t bin_size,
 	       const size_t max_width,
+	       const size_t n_bases_extend, 
 	       vector<double> &vals_hist) {
 
   srand(time(0) + getpid());
@@ -336,6 +360,8 @@ load_values_GR(const string input_file_name,
  size_t n_reads = 0;
  size_t current_count = 1;
  do {
+   ExtendGenomicRegion(n_bases_extend, inputGR);
+
    vector<GenomicRegion> splitGRs;
    SplitGenomicRegion(inputGR, runif, bin_size, splitGRs);
    // add split Genomic Regions to the priority queue
@@ -807,6 +833,7 @@ main(const int argc, const char **argv) {
     double tolerance = 1.0e-20;
     double reads_per_base = 2.0;
     double fixed_fold = 20;
+    size_t n_bases_extend = 0;
     
     /* FLAGS */
     bool VERBOSE = false;
@@ -822,22 +849,25 @@ main(const int argc, const char **argv) {
     opt_parse.add_opt("max_width", 'w', "max fragment length, "
 		      "set equal to read length for single end reads",
 		      false, max_width);
-    opt_parse.add_opt("bin_size", 'n', "bin size "
+    opt_parse.add_opt("bin_size", 'b', "bin size "
 		      "(default: " + toa(bin_size) + ")",
 		      false, bin_size);
-    opt_parse.add_opt("extrap",'e',"maximum extrapolation in base pairs"
+    opt_parse.add_opt("read_extend", 'r', "number of bases to extend reads by "
+		      "(default: " + toa(n_bases_extend) + ", no extension)",
+		      false, n_bases_extend);
+    opt_parse.add_opt("extrap",'e',"maximum extrapolation in base pairs "
 		      "(default: " + toa(max_extrapolation) + ")",
 		      false, max_extrapolation);
     opt_parse.add_opt("step",'s',"step size in bases between extrapolations "
 		      "(default: " + toa(read_step_size) + ")", 
 		      false, read_step_size);
-    opt_parse.add_opt("bootstraps",'b',"number of bootstraps "
+    opt_parse.add_opt("bootstraps",'n',"number of bootstraps "
 		      "(default: " + toa(bootstraps) + "), ",
 		      false, bootstraps);
     opt_parse.add_opt("cval", 'c', "level for confidence intervals "
 		      "(default: " + toa(c_level) + ")", false, c_level);
-    opt_parse.add_opt("reads_per_base", 'r', "average reads per base "
-		      "(including duplicates) to predict sequencing level",
+    opt_parse.add_opt("reads_per_base", 'd', "average reads per base "
+		      "to predict sequencing level",
 		      false, reads_per_base);
     opt_parse.add_opt("terms",'x',"maximum number of terms", 
 		      false, orig_max_terms);
@@ -885,9 +915,9 @@ main(const int argc, const char **argv) {
       cerr << "LOADING READS" << endl;
 
     if(NO_SEQUENCE)
-      n_reads = load_values_GR(input_file_name, bin_size, max_width, coverage_hist);
+      n_reads = load_values_GR(input_file_name, bin_size, max_width, n_bases_extend, coverage_hist);
     else 
-      n_reads = load_values_MR(VERBOSE, input_file_name, bin_size, max_width, coverage_hist);
+      n_reads = load_values_MR(VERBOSE, input_file_name, bin_size, max_width, n_bases_extend, coverage_hist);
 
     double total_bins = 0.0;
     for(size_t i = 0; i < coverage_hist.size(); i++)
