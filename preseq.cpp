@@ -320,39 +320,35 @@ struct LeftMateRightPosCheck {
 /**************** FOR CLARITY BELOW WHEN COMPARING READS *************/
  
  static inline bool
- chrom_greater(const GenomicRegion &a, const GenomicRegion &b) {
- return a.get_chrom() > b.get_chrom();
- }
- static inline bool
  same_start(const GenomicRegion &a, const GenomicRegion &b) {
- return a.get_start() == b.get_start();
+   return a.get_start() == b.get_start();
  }
  static inline bool
- start_greater(const GenomicRegion &a, const GenomicRegion &b) {
- return a.get_start() > b.get_start();
+ start_geq(const GenomicRegion &a, const GenomicRegion &b) {
+   return a.get_start() >= b.get_start();
  }
  static inline bool
- end_greater(const GenomicRegion &a, const GenomicRegion &b) {
- return a.get_end() > b.get_end();
+ end_geq(const GenomicRegion &a, const GenomicRegion &b) {
+   return a.get_end() >= b.get_end();
  }
  /******************************************************************************/
 
  
  struct GenomicRegionOrderChecker {
- bool operator()(const GenomicRegion &prev, const GenomicRegion &gr) const {
- return start_check(prev, gr);
- }
- static bool
- is_ready(const priority_queue<GenomicRegion, vector<GenomicRegion>, GenomicRegionOrderChecker> &pq,
- const GenomicRegion &gr, const size_t max_width) {
- return !pq.top().same_chrom(gr) || pq.top().get_end() + max_width < gr.get_start();
- }
- static bool
- start_check(const GenomicRegion &prev, const GenomicRegion &gr) {
- return (chrom_greater(prev, gr)
- || (prev.same_chrom(gr) && start_greater(prev, gr))
- || (prev.same_chrom(gr) && same_start(prev, gr) && end_greater(prev, gr)));
- }
+   bool operator()(const GenomicRegion &prev, const GenomicRegion &gr) const {
+     return start_check(prev, gr);
+     }
+   static bool
+   is_ready(const priority_queue<GenomicRegion, vector<GenomicRegion>, GenomicRegionOrderChecker> &pq,
+	    const GenomicRegion &gr, const size_t max_width) {
+      return !pq.top().same_chrom(gr) || pq.top().get_end() + max_width < gr.get_start();
+      }
+   static bool
+   start_check(const GenomicRegion &prev, const GenomicRegion &gr) {
+     return (!prev.same_chrom(gr)
+	     || (prev.same_chrom(gr) && start_geq(prev, gr))
+	     || (prev.same_chrom(gr) && same_start(prev, gr) && end_geq(prev, gr)));
+   }
  };
 
 
@@ -373,232 +369,146 @@ load_counts_BAM_pe(const string &input_file_name,
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
   size_t current_count = 1;
-    size_t suffix_len = 0;
-    size_t loop = 1;
+  size_t suffix_len = 0;
+  size_t loop = 1;
 
-  GenomicRegion prev_gr, curr_gr, prev_gr_comp, curr_gr_comp;
+  GenomicRegion curr_gr, prev_gr;
     
   std::priority_queue<GenomicRegion, vector<GenomicRegion>,
-    GenomicRegionOrderChecker> leftmate_pq;
+    GenomicRegionOrderChecker> merged_pq;
     
   std::tr1::unordered_map<string, SAMRecord> dangling_mates;
+  size_t n_sam_reads = 0;
     
-    
-    while ((sam_reader >> samr, sam_reader.is_good()))
+  while ((sam_reader >> samr, sam_reader.is_good()))
     {
-        if(samr.is_primary && samr.is_mapped){
-            // only convert mapped and primary reads
-            if (samr.is_mapping_paired){
+      if(samr.is_primary && samr.is_mapped){
+	// only convert mapped and primary reads
+	if (samr.is_mapping_paired){
                 
-                const string read_name
-                = samr.mr.r.get_name().substr(
-                                              0, samr.mr.r.get_name().size() - suffix_len);
-                if (dangling_mates.find(read_name) != dangling_mates.end()){
-                    // other end is in dangling mates, merge the two mates
-                    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
-                    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
-                    revcomp(samr.mr);
-                    
-                    MappedRead merged;
-                    int len = 0;
-                    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
-                                dangling_mates[read_name].mr, samr.mr, merged, len);
-                    
-                    if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
-                        if((prev_gr.get_chrom() == "(NULL)")){
-                            prev_gr = merged.r;
-                            leftmate_pq.push(prev_gr);
-                            
-                            cerr << "first element in queue\n" << prev_gr << endl;
-                        }
-                        else
-                            curr_gr = merged.r;
-                        
-                    }
-                 
-                    else{
-                        if((prev_gr.get_chrom() == "(NULL)")){
-                            prev_gr = dangling_mates[read_name].mr.r;
-                            leftmate_pq.push(prev_gr);
-                            
-                            cerr << "first element in queue\n" << prev_gr << endl;
-                        }
-                        else
-                            curr_gr = dangling_mates[read_name].mr.r;
-                        
-                    }
-                    
-                //if read is close enough to previous read
-                    if ((curr_gr.get_start() - prev_gr.get_start() <= 1000) && (prev_gr.get_chrom() != "(NULL)") && (curr_gr.get_chrom() != "(NULL)")){
-                        
-                     leftmate_pq.push(curr_gr);
-                        
-                        cerr << "next element in queue\n" << curr_gr << endl;
-                     prev_gr = curr_gr;
-                    }
-                    
-                    //otherwise, begin emptying priority queue 
-                    else if ((curr_gr.get_start() - prev_gr.get_start() > 1000) && (prev_gr.get_chrom() != "(NULL)") && (curr_gr.get_chrom() != "(NULL)")){
-                        assert(!(leftmate_pq.empty()));
-                         prev_gr_comp = leftmate_pq.top();
-                        
-                        cerr << "highest priority element in queue\n" << prev_gr_comp << endl;
-                         leftmate_pq.pop();
-                     
-                         //if there was only one read in the queue
-                         if(leftmate_pq.empty()){
-                             cerr << "only one read in queue" << endl;
-                            ++counts_hist[1];
-                         }
-                     
-                     // otherwise, if there are more reads in this "group"
-                         else{
-                             while(!leftmate_pq.empty()){
-                                 curr_gr_comp = leftmate_pq.top();
-                                 
-                                 cerr << "next highest priority element in queue\n" << curr_gr_comp << endl;
-                                 leftmate_pq.pop();
-                     
-                                 //update counts hist
-                                 update_pe_duplicate_counts_hist(curr_gr_comp, prev_gr_comp,
-                                                                 input_file_name, counts_hist,
-                                                                 current_count);
-                                 cerr << "current count " << current_count << endl; 
-                                 prev_gr_comp = curr_gr_comp;
-                             }//end while loop
-                             if(counts_hist.size() < current_count + 1)
-                                 counts_hist.resize(current_count + 1, 0.0);
-                             ++counts_hist[current_count];
-                             current_count = 1;
-                         }
-                         // end while priority queue loop
-                     assert((leftmate_pq.empty()));
-                     
-                     leftmate_pq.push(curr_gr);
-                        cerr << "first element in new queue\n" << curr_gr << endl;
-                     prev_gr = curr_gr;
-                        
-                     
-                   
-                    
-                    }//end statement for emptying priority queue
-                
-                dangling_mates.erase(read_name);
-                ++n_reads;
-                    cerr << "read number "<< n_reads << endl;
-                }//end if statement for if read is in dangling mates
-                    
-            //other end not in dangling mates, add this read to dangling mates.
-            else{
-            
-                dangling_mates[read_name] = samr;
-            }
-                loop++;
-                cerr << "starting loop number " << loop << endl;
-                
-            }//end if statement for if mapping is paired
-        }//end if statement for if read is mapped and primary
-    }
-    
+	  //	  cerr << "sam record : " << samr.mr << endl;
+	  ++n_sam_reads;
 
+	  const string read_name
+	    = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size() - suffix_len);
 
-    
-     //put priority queue stuff here?
-      
-    /*
-  while (sam_reader >> samr, sam_reader.is_good()) {
-    // only convert mapped and primary reads
-    // ignore unmapped reads & secondary alignments
-    if(samr.is_primary && samr.is_mapped){
-      // only count left mate
-      // either template length > 0 or = 0 and is Trich
-      if((samr.is_mapping_paired && samr.seg_len > 0) || 
-	 (!(samr.is_mapping_paired) && samr.seg_len == 0)){
+	  if (dangling_mates.find(read_name) != dangling_mates.end()){
+	    // other end is in dangling mates, merge the two mates
+	    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
+	    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+	    revcomp(samr.mr);
                     
-	//if prev_gr is empty, fill this first.
-	//will only happen in first iteration
-	if ((prev_gr.get_chrom() == "(NULL)")){
-	  prev_gr = samr.mr.r;
-	  //TD: gr length is seg_len if paired
-	  if(samr.seg_len > 0)
-	    prev_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
-	  current_count = 1;
-	  leftmate_pq.push(prev_gr);
-	}
-                    
-	//if prev_mr is not empty,
-	else{
-	  //then we can go ahead and fill curr_mr
-	  curr_gr = samr.mr.r;  
-	  // TD: gr length is seg_len if paired
-	  if(samr.seg_len > 0)                      
-	    curr_gr.set_end(samr.mr.r.get_start() + samr.seg_len);
-	  //if these have the same starting position
-	  if((prev_gr.same_chrom(curr_gr)) &&
-	     (curr_gr.get_start() == prev_gr.get_start())){
-	    //put read in priority queue for later comparison
-	    leftmate_pq.push(curr_gr);
-	    prev_gr.swap(curr_gr);                           
-	  }
-	  //otherwise, if the next read doesn't
-	  //have the same starting position..
-	  //we can now work with comparing what is
-	  //in our current "group" of reads
-	  else{
-	    assert(!(leftmate_pq.empty()));
-	    //BELOW: compare consecutive reads in the queue
-	    GenomicRegion prev_gr_comp = leftmate_pq.top();
-	    leftmate_pq.pop();
-                    
-	    //if there was only one read in the queue
-	    if(leftmate_pq.empty()){
-	      ++counts_hist[1];
-	    }
-                            
-	    // otherwise, if there are more reads in this "group"
-	    else{
-	      while(!leftmate_pq.empty()){
-		GenomicRegion curr_gr_comp = leftmate_pq.top();
-		leftmate_pq.pop();
-                                    
-		//update counts hist
-		update_pe_duplicate_counts_hist(curr_gr_comp, prev_gr_comp,
-						input_file_name, counts_hist,
-						current_count);
-		prev_gr_comp.swap(curr_gr_comp);
+	    MappedRead merged;
+	    int len = 0;
+	    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			dangling_mates[read_name].mr, samr.mr, merged, len);
+              
+	    // merge success!      
+	    if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
+
+	      // first iteration
+	      if(n_reads == 0){
+		prev_gr = merged.r;
+		//	cerr << "first read : " << prev_gr << endl;
 	      }
-	      if(counts_hist.size() < current_count + 1)
-		counts_hist.resize(current_count + 1, 0.0);
-	      ++counts_hist[current_count];
+	      else{
+		merged_pq.push(merged.r);  
+		//	cerr << "current read : " << merged.r << endl;
+		//		cerr << "top of queue : " <<  merged_pq.top() << endl;                        
+
+		if((merged.r.get_start() > merged_pq.top().get_end() + 1000) 
+		    && !(merged_pq.empty()) ){
+		//begin emptying priority queue 
+		     while ((merged.r.get_start() > merged_pq.top().get_end() + 1000) 
+			    && !(merged_pq.empty()) ){
+		       curr_gr = merged_pq.top();
+		       //	       cerr << "outputting from queue : " << merged_pq.top() << endl;
+		       merged_pq.pop();
+
+		    //update counts hist
+		       update_pe_duplicate_counts_hist(curr_gr, prev_gr,
+						       input_file_name, counts_hist,
+						       current_count);
+		       //	       cerr << "current_count  = " << current_count << endl;
+
+		       //	       cerr << "CURRENT COUNTS (" << counts_hist.size() << ")" << endl;
+		       //	       for (size_t i = 0; i < counts_hist.size(); i++)
+		       //		 if (counts_hist[i] > 0)
+		       //		   cerr << i << '\t' << counts_hist[i] << endl;
+		       //	       cerr << endl;
+		
+		       prev_gr = curr_gr;
+
+		     }//end while loop
+
+		}//end statement for emptying priority queue
+    
+	      }
+                
+	      dangling_mates.erase(read_name);
+	      ++n_reads;
+	      //	      cerr << "read number "<< n_reads << endl;
+	    }//end if statement for if read is in dangling mates
+
+	    else{
+	      cerr << "problem with read " << read_name << endl;
+	      cerr << dangling_mates[read_name].mr << endl;
+	      cerr << samr.mr << endl;
+	      throw SMITHLABException("fuck my life");
 	    }
-	    // end while priority queue loop
-                            
-	    prev_gr.swap(curr_gr);  
-	    leftmate_pq.push(prev_gr);
-	    current_count = 1;
+
 	  }
 
-	}
-	//end statement for this group of reads.
-                                 
-	++n_reads;      
-      }//end if seg len
-           
-    }//end if primary & mapped
-  }//end while loop
-    
-  cerr << "counts histogram successfully created" << endl;
-    
-    size_t sum = 0;
-    
-    for (int i = 1; i < counts_hist.size(); i++){
-        sum+=(i*counts_hist[i]);
+	  //other end not in dangling mates, add this read to dangling mates.
+	  else{
+	    dangling_mates[read_name] = samr;
+	  }
+                
+	}//end if statement for if mapping is paired
+      }//end if statement for if read is mapped and primary
     }
+  
+  // empty priority queue at final iteration
+  while(!merged_pq.empty()){
+    curr_gr = merged_pq.top();
+    //   cerr << "outputting from queue : " << merged_pq.top() << endl;
+    merged_pq.pop();
+
+    //update counts hist
+    update_pe_duplicate_counts_hist(curr_gr, prev_gr,
+				    input_file_name, counts_hist,
+				    current_count);
+    //   cerr << "current_count  = " << current_count << endl;
+    //   cerr << "CURRENT COUNTS (" << counts_hist.size() << ")" << endl;
+    //   for (size_t i = 0; i < counts_hist.size(); i++)
+    //    if (counts_hist[i] > 0)
+    //	cerr << i << '\t' << counts_hist[i] << endl;
+    //  cerr << endl;
+		
+
+    prev_gr = curr_gr;
+
+  }//end while loop
+
+  if(counts_hist.size() < current_count + 1)
+    counts_hist.resize(current_count + 1, 0.0);
+  
+  ++counts_hist[current_count];
+
+  // make sure it's empty
+  assert((merged_pq.empty()));
+
+  if(!dangling_mates.empty())
+    cerr << "dangling mates not empty" << endl;
+
+  while(!dangling_mates.empty()){
+     if (!dangling_mates.begin()->second.is_Trich)
+        revcomp(dangling_mates.begin()->second.mr);
+      cerr << dangling_mates.begin()->second.mr << endl;
+      dangling_mates.erase(dangling_mates.begin());
+  }
     
-    assert(sum==n_reads);
-     
-     */
-    
+  // cerr << "n sam reads = " << n_sam_reads << endl;
   return n_reads;
 }
 
