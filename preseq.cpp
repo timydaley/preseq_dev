@@ -165,71 +165,72 @@ fill_overlap(const bool pos_str, const MappedRead &mr, const size_t start,
 }
 
 static void
-merge_mates(const size_t range, const MappedRead &one, const MappedRead &two,
+merge_mates(const size_t suffix_len, const size_t range,
+            const MappedRead &one, const MappedRead &two,
             MappedRead &merged, int &len) {
-  
-  const bool pos_str = one.r.pos_strand();
-  const size_t overlap_start = max(one.r.get_start(), two.r.get_start());
-  const size_t overlap_end = min(one.r.get_end(), two.r.get_end());
-
-  const size_t one_left = pos_str ? 
+    
+    const bool pos_str = one.r.pos_strand();
+    const size_t overlap_start = max(one.r.get_start(), two.r.get_start());
+    const size_t overlap_end = min(one.r.get_end(), two.r.get_end());
+    
+    const size_t one_left = pos_str ?
     one.r.get_start() : max(overlap_end, one.r.get_start());
-  const size_t one_right = 
+    const size_t one_right =
     pos_str ? min(overlap_start, one.r.get_end()) : one.r.get_end();
-  
-  const size_t two_left = pos_str ? 
+    
+    const size_t two_left = pos_str ?
     max(overlap_end, two.r.get_start()) : two.r.get_start();
-  const size_t two_right = pos_str ? 
+    const size_t two_right = pos_str ?
     two.r.get_end() : min(overlap_start, two.r.get_end());
-
-  len = pos_str ? (two_right - one_left) : (one_right - two_left);
-  
-  if(len < 0){
-    cerr << one << endl;
-    cerr << two << endl;
-  }
-  // assert(len > 0);
-  // assert(one_left <= one_right && two_left <= two_right);
-  // assert(overlap_start >= overlap_end || static_cast<size_t>(len) == 
-  //   ((one_right - one_left) + (two_right - two_left) +
-  //             (overlap_end - overlap_start)));
-  
-  string seq(len, 'N');
-  string scr(len, 'B');
-  if (len > 0 && len <= static_cast<int>(range)) {
-    // lim_one: offset in merged sequence where overlap starts
-    const size_t lim_one = one_right - one_left;
-    copy(one.seq.begin(), one.seq.begin() + lim_one, seq.begin());
-    copy(one.scr.begin(), one.scr.begin() + lim_one, scr.begin());
     
-    const size_t lim_two = two_right - two_left;
-    copy(two.seq.end() - lim_two, two.seq.end(), seq.end() - lim_two);
-    copy(two.scr.end() - lim_two, two.scr.end(), scr.end() - lim_two);
+    len = pos_str ? (two_right - one_left) : (one_right - two_left);
     
-    // deal with overlapping part
-    if (overlap_start < overlap_end) {
-      const size_t one_bads = count(one.seq.begin(), one.seq.end(), 'N');
-      const int info_one = one.seq.length() - (one_bads + one.r.get_score());
-      
-      const size_t two_bads = count(two.seq.begin(), two.seq.end(), 'N');
-      const int info_two = two.seq.length() - (two_bads + two.r.get_score());
-      
-      // use the mate with the most info to fill in the overlap
-      if (info_one >= info_two)
-	fill_overlap(pos_str, one, overlap_start, overlap_end, lim_one, seq, scr);
-      else
-	fill_overlap(pos_str, two, overlap_start, overlap_end, lim_one, seq, scr);
+    if(len < 0){
+        cerr << one << endl;
+        cerr << two << endl;
     }
-  }
-  
-  merged = one;
-  merged.r.set_start(pos_str ? one.r.get_start() : two.r.get_start());
-  merged.r.set_end(merged.r.get_start() + len);
-  merged.r.set_score(one.r.get_score() + two.r.get_score());
-  merged.seq = seq;
-  merged.scr = scr;  
-  const string name(one.r.get_name());
-  merged.r.set_name("FRAG:" + name.substr(0, name.size()));
+    // assert(len > 0);
+    // assert(one_left <= one_right && two_left <= two_right);
+    // assert(overlap_start >= overlap_end || static_cast<size_t>(len) ==
+    //    ((one_right - one_left) + (two_right - two_left) + (overlap_end - overlap_start)));
+    
+    string seq(len, 'N');
+    string scr(len, 'B');
+    if (len >= 0 && len <= static_cast<int>(range)) {
+        // lim_one: offset in merged sequence where overlap starts
+        const size_t lim_one = one_right - one_left;
+        copy(one.seq.begin(), one.seq.begin() + lim_one, seq.begin());
+        copy(one.scr.begin(), one.scr.begin() + lim_one, scr.begin());
+        
+        const size_t lim_two = two_right - two_left;
+        copy(two.seq.end() - lim_two, two.seq.end(), seq.end() - lim_two);
+        copy(two.scr.end() - lim_two, two.scr.end(), scr.end() - lim_two);
+        
+        // deal with overlapping part
+        if (overlap_start < overlap_end) {
+            const size_t one_bads = count(one.seq.begin(), one.seq.end(), 'N');
+            const int info_one = one.seq.length() - (one_bads + one.r.get_score());
+            
+            const size_t two_bads = count(two.seq.begin(), two.seq.end(), 'N');
+            const int info_two = two.seq.length() - (two_bads + two.r.get_score());
+            
+            // use the mate with the most info to fill in the overlap
+            if (info_one >= info_two)
+                fill_overlap(pos_str, one, overlap_start, overlap_end, lim_one, seq, scr);
+            else
+                fill_overlap(pos_str, two, overlap_start, overlap_end, lim_one, seq, scr);
+        }
+    }
+    
+    merged = one;
+    merged.r.set_start(pos_str ? one.r.get_start() : two.r.get_start());
+    merged.r.set_end(merged.r.get_start() + len);
+    merged.r.set_score(one.r.get_score() + two.r.get_score());
+    merged.seq = seq;
+    merged.scr = scr;  
+    const string name(one.r.get_name());
+    merged.r.set_name("FRAG:" + name.substr(0, name.size() - suffix_len));
+    
 }
 
 inline static bool
@@ -288,6 +289,7 @@ update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
 /****check this later or get Andrew or Tim to check it****/
 
 // TD: switched this, but I don't think it matters.
+/*
 static inline bool
 end_before(const GenomicRegion &a, const GenomicRegion &b) {
     return a.get_end() < b.get_end();
@@ -310,13 +312,53 @@ struct LeftMateRightPosCheck {
         return ((prev.same_chrom(curr) && same_start(prev, curr)
                  && end_before(prev, curr)));
     }
-};
+};*/
 ///////end/////////
 
 
 
+/**************** FOR CLARITY BELOW WHEN COMPARING READS *************/
+ 
+ static inline bool
+ chrom_greater(const GenomicRegion &a, const GenomicRegion &b) {
+ return a.get_chrom() > b.get_chrom();
+ }
+ static inline bool
+ same_start(const GenomicRegion &a, const GenomicRegion &b) {
+ return a.get_start() == b.get_start();
+ }
+ static inline bool
+ start_greater(const GenomicRegion &a, const GenomicRegion &b) {
+ return a.get_start() > b.get_start();
+ }
+ static inline bool
+ end_greater(const GenomicRegion &a, const GenomicRegion &b) {
+ return a.get_end() > b.get_end();
+ }
+ /******************************************************************************/
+
+ 
+ struct GenomicRegionOrderChecker {
+ bool operator()(const GenomicRegion &prev, const GenomicRegion &gr) const {
+ return start_check(prev, gr);
+ }
+ static bool
+ is_ready(const priority_queue<GenomicRegion, vector<GenomicRegion>, GenomicRegionOrderChecker> &pq,
+ const GenomicRegion &gr, const size_t max_width) {
+ return !pq.top().same_chrom(gr) || pq.top().get_end() + max_width < gr.get_start();
+ }
+ static bool
+ start_check(const GenomicRegion &prev, const GenomicRegion &gr) {
+ return (chrom_greater(prev, gr)
+ || (prev.same_chrom(gr) && start_greater(prev, gr))
+ || (prev.same_chrom(gr) && same_start(prev, gr) && end_greater(prev, gr)));
+ }
+ };
+
+
+
 static size_t
-load_counts_BAM_pe(const string &input_file_name, 
+load_counts_BAM_pe(const string &input_file_name,
 		   const size_t MAX_SEGMENT_LENGTH,
 		   vector<double> &counts_hist) {
     
@@ -330,13 +372,140 @@ load_counts_BAM_pe(const string &input_file_name,
     // resize vals_hist, make sure it starts out empty
   counts_hist.clear();
   counts_hist.resize(2, 0.0);
-  size_t current_count = 0;
+  size_t current_count = 1;
+    size_t suffix_len = 0;
+    size_t loop = 1;
 
-  GenomicRegion prev_gr, curr_gr;
+  GenomicRegion prev_gr, curr_gr, prev_gr_comp, curr_gr_comp;
     
   std::priority_queue<GenomicRegion, vector<GenomicRegion>,
-    LeftMateRightPosCheck> leftmate_pq;
+    GenomicRegionOrderChecker> leftmate_pq;
     
+  std::tr1::unordered_map<string, SAMRecord> dangling_mates;
+    
+    
+    while ((sam_reader >> samr, sam_reader.is_good()))
+    {
+        if(samr.is_primary && samr.is_mapped){
+            // only convert mapped and primary reads
+            if (samr.is_mapping_paired){
+                
+                const string read_name
+                = samr.mr.r.get_name().substr(
+                                              0, samr.mr.r.get_name().size() - suffix_len);
+                if (dangling_mates.find(read_name) != dangling_mates.end()){
+                    // other end is in dangling mates, merge the two mates
+                    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
+                    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+                    revcomp(samr.mr);
+                    
+                    MappedRead merged;
+                    int len = 0;
+                    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+                                dangling_mates[read_name].mr, samr.mr, merged, len);
+                    
+                    if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
+                        if((prev_gr.get_chrom() == "(NULL)")){
+                            prev_gr = merged.r;
+                            leftmate_pq.push(prev_gr);
+                            
+                            cerr << "first element in queue\n" << prev_gr << endl;
+                        }
+                        else
+                            curr_gr = merged.r;
+                        
+                    }
+                 
+                    else{
+                        if((prev_gr.get_chrom() == "(NULL)")){
+                            prev_gr = dangling_mates[read_name].mr.r;
+                            leftmate_pq.push(prev_gr);
+                            
+                            cerr << "first element in queue\n" << prev_gr << endl;
+                        }
+                        else
+                            curr_gr = dangling_mates[read_name].mr.r;
+                        
+                    }
+                    
+                //if read is close enough to previous read
+                    if ((curr_gr.get_start() - prev_gr.get_start() <= 1000) && (prev_gr.get_chrom() != "(NULL)") && (curr_gr.get_chrom() != "(NULL)")){
+                        
+                     leftmate_pq.push(curr_gr);
+                        
+                        cerr << "next element in queue\n" << curr_gr << endl;
+                     prev_gr = curr_gr;
+                    }
+                    
+                    //otherwise, begin emptying priority queue 
+                    else if ((curr_gr.get_start() - prev_gr.get_start() > 1000) && (prev_gr.get_chrom() != "(NULL)") && (curr_gr.get_chrom() != "(NULL)")){
+                        assert(!(leftmate_pq.empty()));
+                         prev_gr_comp = leftmate_pq.top();
+                        
+                        cerr << "highest priority element in queue\n" << prev_gr_comp << endl;
+                         leftmate_pq.pop();
+                     
+                         //if there was only one read in the queue
+                         if(leftmate_pq.empty()){
+                             cerr << "only one read in queue" << endl;
+                            ++counts_hist[1];
+                         }
+                     
+                     // otherwise, if there are more reads in this "group"
+                         else{
+                             while(!leftmate_pq.empty()){
+                                 curr_gr_comp = leftmate_pq.top();
+                                 
+                                 cerr << "next highest priority element in queue\n" << curr_gr_comp << endl;
+                                 leftmate_pq.pop();
+                     
+                                 //update counts hist
+                                 update_pe_duplicate_counts_hist(curr_gr_comp, prev_gr_comp,
+                                                                 input_file_name, counts_hist,
+                                                                 current_count);
+                                 cerr << "current count " << current_count << endl; 
+                                 prev_gr_comp = curr_gr_comp;
+                             }//end while loop
+                             if(counts_hist.size() < current_count + 1)
+                                 counts_hist.resize(current_count + 1, 0.0);
+                             ++counts_hist[current_count];
+                             current_count = 1;
+                         }
+                         // end while priority queue loop
+                     assert((leftmate_pq.empty()));
+                     
+                     leftmate_pq.push(curr_gr);
+                        cerr << "first element in new queue\n" << curr_gr << endl;
+                     prev_gr = curr_gr;
+                        
+                     
+                   
+                    
+                    }//end statement for emptying priority queue
+                
+                dangling_mates.erase(read_name);
+                ++n_reads;
+                    cerr << "read number "<< n_reads << endl;
+                }//end if statement for if read is in dangling mates
+                    
+            //other end not in dangling mates, add this read to dangling mates.
+            else{
+            
+                dangling_mates[read_name] = samr;
+            }
+                loop++;
+                cerr << "starting loop number " << loop << endl;
+                
+            }//end if statement for if mapping is paired
+        }//end if statement for if read is mapped and primary
+    }
+    
+
+
+    
+     //put priority queue stuff here?
+      
+    /*
   while (sam_reader >> samr, sam_reader.is_good()) {
     // only convert mapped and primary reads
     // ignore unmapped reads & secondary alignments
@@ -419,6 +588,16 @@ load_counts_BAM_pe(const string &input_file_name,
   }//end while loop
     
   cerr << "counts histogram successfully created" << endl;
+    
+    size_t sum = 0;
+    
+    for (int i = 1; i < counts_hist.size(); i++){
+        sum+=(i*counts_hist[i]);
+    }
+    
+    assert(sum==n_reads);
+     
+     */
     
   return n_reads;
 }
@@ -1137,8 +1316,10 @@ lc_extrap(const bool VERBOSE,
   size_t total_reads = 0;
   for(size_t i = 0; i < counts_hist.size(); i++)
     total_reads += i*counts_hist[i];
-
+    cerr << "total reads" << total_reads;
   assert(total_reads == n_reads);
+   
+
     
   // catch if all reads are distinct or sample sufficiently deep
   if (max_observed_count < MIN_REQUIRED_COUNTS)
