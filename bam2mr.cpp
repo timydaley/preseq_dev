@@ -145,7 +145,7 @@ main(int argc, const char **argv) {
   try {
     string outfile;
     string mapper = "general";
-    size_t MAX_SEGMENT_LENGTH = 1000;
+    size_t MAX_SEGMENT_LENGTH = 5000;
     size_t suffix_len = 0;
     bool VERBOSE = false;
     
@@ -229,7 +229,6 @@ main(int argc, const char **argv) {
 	  }
 	  else
 	  {
-
 	    dangling_mates[read_name] = samr;
 	  }
 
@@ -237,8 +236,8 @@ main(int argc, const char **argv) {
 	  // on different chroms and too far away 
 	  if (dangling_mates.size() > 5000)
 	  {
-	    if(VERBOSE)
-	      cerr << "dangling mates too large, emptying" << endl;
+	    //   if(VERBOSE)
+	    //  cerr << "dangling mates too large, emptying" << endl;
 
 	    using std::tr1::unordered_map;
 	    unordered_map<string, SAMRecord> tmp;
