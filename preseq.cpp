@@ -265,7 +265,7 @@ struct GenomicRegionOrderChecker {
 static void empty_pq(GenomicRegion &curr_gr, GenomicRegion &prev_gr,
                      size_t &current_count, vector<double> &counts_hist,
                      priority_queue<GenomicRegion, vector<GenomicRegion>,
-                     GenomicRegionOrderChecker> &read_pq,
+                                    GenomicRegionOrderChecker> &read_pq,
                      const string &input_file_name ){
     
     curr_gr = read_pq.top();
@@ -322,173 +322,135 @@ load_counts_BAM_pe(const bool VERBOSE,
     
     while ((sam_reader >> samr, sam_reader.is_good()))
     {
-        if(samr.is_primary && samr.is_mapped){
-            // only convert mapped and primary reads
-            if (samr.is_mapping_paired){
+      if(samr.is_primary && samr.is_mapped){
+	// only convert mapped and primary reads
+	if (samr.is_mapping_paired){
+	  const string read_name
+	    = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size() - suffix_len);
                 
-                const string read_name
-                = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size() - suffix_len);
-                
-                if (dangling_mates.find(read_name) != dangling_mates.end()){
-                    // other end is in dangling mates, merge the two mates
-                    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
-                    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+	  if (dangling_mates.find(read_name) != dangling_mates.end()){
+	    // other end is in dangling mates, merge the two mates
+	    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
+	    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
                     
-                    GenomicRegion merged;
-                    int len = 0;
-                    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
-                                dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
-                    
-                    // merge success!
-                    if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
-                        
-                        // first iteration
-                        if(n_reads == 0){
-                            prev_gr = merged;
-                            ++n_reads;
-                            ++n_merged;
-                            //	cerr << "first read : " << prev_gr << endl;
-                        }
-                        
-                        
-                        
-                        else{
-                            ++n_reads;
-                            ++n_merged;
-                            read_pq.push(merged);
-                            //	cerr << "current read : " << merged << endl;
-                            //		cerr << "top of queue : " <<  read_pq.top() << endl;
+	    GenomicRegion merged;
+	    int len = 0;
+	    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
+	    // merge success!
+	    if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
+	      // first iteration
+	      if(n_reads == 0){
+		prev_gr = merged;
+		++n_reads;
+		++n_merged;
+	      }
+	      else{
+		++n_reads;
+		++n_merged;
+		read_pq.push(merged);
                             
-                            if(!(read_pq.empty()) &&
-                               GenomicRegionOrderChecker::is_ready(read_pq, merged, MAX_SEGMENT_LENGTH)) {
-                                //begin emptying priority queue
-                                while(!(read_pq.empty()) &&
-                                      GenomicRegionOrderChecker::is_ready(read_pq, merged,
-                                                                          MAX_SEGMENT_LENGTH) ){
-                                          
-                                          empty_pq(curr_gr, prev_gr, current_count,
-                                                   counts_hist, read_pq, input_file_name);
-                          
-                                          
-                                      }//end while loop
-                                
-                            }//end statement for emptying priority queue
-                            
-                        }
-                        
-                        dangling_mates.erase(read_name);
-                        
-                        if(VERBOSE && (n_reads % 1000000 == 0))
-                            cerr << n_reads << " reads" << endl;
-                        
-                        
-                        
-                    }//end if statement for if merge is successful
-                    
-                    else{
-                        cerr << "problem with read " << read_name << endl;
-                        cerr << dangling_mates[read_name].mr << endl;
-                        cerr << samr.mr << endl;
-                        throw SMITHLABException("fuck my life");
-                    }
-                    
-                }//end if statement for if read is in dangling mates
-                
-                //other end not in dangling mates, add this read to dangling mates.
-                else{
-                    dangling_mates[read_name] = samr;
-                }
-                
-                
-            }//end if statement for if mapping is paired
-            else{ // read is unpaired, put in queue
-                
-                
-                
-                if(n_reads == 0){
-                    ++n_reads;
-                    ++n_unpaired;
-                    prev_gr = samr.mr.r;
+		if(!(read_pq.empty()) &&
+		   GenomicRegionOrderChecker::is_ready(read_pq, merged, MAX_SEGMENT_LENGTH)) {
+		  //begin emptying priority queue
+		  while(!(read_pq.empty()) &&
+			GenomicRegionOrderChecker::is_ready(read_pq, merged,
+							    MAX_SEGMENT_LENGTH) ){
+		    empty_pq(curr_gr, prev_gr, current_count,
+			     counts_hist, read_pq, input_file_name);
+		  }//end while loop
+		}//end statement for emptying priority queue
+	      }
+	      dangling_mates.erase(read_name);
 
-                }
+	      if(VERBOSE && (n_reads % 1000000 == 0))
+		cerr << n_reads << " reads" << endl;
+	    }//end if statement for if merge is successful
+	    else{
+	      cerr << "problem with read " << read_name << endl;
+	      cerr << dangling_mates[read_name].mr << endl;
+	      cerr << samr.mr << endl;
+	      throw SMITHLABException("merge unsuccessful");
+	    }
+	  }//end if statement for if read is in dangling mates
+	  else{	// other end not in dangling mates, add this read to dangling mates.
+	    dangling_mates[read_name] = samr;
+	  }
+	}//end if statement for if mapping is paired
+	else{ // read is unpaired, put in queue
+	  if(n_reads == 0){ // first read
+	    ++n_reads;
+	    ++n_unpaired;
+	    prev_gr = samr.mr.r;
+	  }
+	  else{ // not first read
+	    ++n_reads;
+	    ++n_unpaired;
+	    read_pq.push(samr.mr.r);
+ 
+	    if(!(read_pq.empty()) &&
+	       GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r, MAX_SEGMENT_LENGTH)) {
+	      //begin emptying priority queue
+	      while(!(read_pq.empty()) &&
+		    GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r,
+							MAX_SEGMENT_LENGTH) ){
+                              
+		empty_pq(curr_gr, prev_gr, current_count,
+			 counts_hist, read_pq, input_file_name);
+	      }//end while loop
+                    
+	    }//end statement for emptying priority queue
                 
-                else{
-                    
-                    ++n_reads;
-                    ++n_unpaired;
-                    read_pq.push(samr.mr.r);
-                    
-        
+	  }
 
-                    if(!(read_pq.empty()) &&
-                       GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r, MAX_SEGMENT_LENGTH)) {
-                        //begin emptying priority queue
-                        while(!(read_pq.empty()) &&
-                          GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r,
-                                                              MAX_SEGMENT_LENGTH) ){
-                              
-                              empty_pq(curr_gr, prev_gr, current_count,
-                                       counts_hist, read_pq, input_file_name);
-                              
-                          }//end while loop
-                    
-                    }//end statement for emptying priority queue
-                
-                }
-                if(VERBOSE && (n_reads % 1000000 == 0))
-                    cerr << n_reads << " reads" << endl;
-            } //end unpaired read
+	  if(VERBOSE && (n_reads % 1000000 == 0))
+	    cerr << n_reads << " reads" << endl;
+	} //end unpaired read
             
-            // dangling mates is too large, flush dangling_mates of reads
-            // on different chroms and too far away
-            if (dangling_mates.size() > MAX_READS_TO_HOLD){
-                if(VERBOSE)
-                    cerr << "dangling mates too large, emptying" << endl;
+	// dangling mates is too large, flush dangling_mates of reads
+	// on different chroms and too far away
+	if (dangling_mates.size() > MAX_READS_TO_HOLD){
+	  if(VERBOSE)
+	    cerr << "dangling mates too large, emptying" << endl;
                 
-                unordered_map<string, SAMRecord> tmp;
-                for (unordered_map<string, SAMRecord>::iterator
-                     itr = dangling_mates.begin();
-                     itr != dangling_mates.end(); ++itr)
-                    if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
-                        || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
-                            && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
-                            samr.mr.r.get_start())) // put reads in the queue that are too far away
-                    {
-                        if(itr->second.seg_len >= 0)
-                            read_pq.push(itr->second.mr.r);
-                    }
-                    else
-                        tmp[itr->first] = itr->second;
+	  unordered_map<string, SAMRecord> tmp;
+	  for (unordered_map<string, SAMRecord>::iterator
+		 itr = dangling_mates.begin();
+	       itr != dangling_mates.end(); ++itr)
+	    if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
+		|| (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
+		    && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
+		    samr.mr.r.get_start())) // put reads in the queue that are too far away
+	      {
+		if(itr->second.seg_len >= 0)
+		  read_pq.push(itr->second.mr.r);
+	      }
+	    else
+	      tmp[itr->first] = itr->second;
                 
-                std::swap(tmp, dangling_mates);
-            }
+	  std::swap(tmp, dangling_mates);
+	}
             
-        }//end if statement for if read is mapped and primary
+      }//end if statement for if read is mapped and primary
     }//end loop for reading in BAM file. reached end of file
     
-    // empty dangling mates
+    // empty dangling mates of any excess reads
     while (!dangling_mates.empty()) {
-        read_pq.push(dangling_mates.begin()->second.mr.r);
-        dangling_mates.erase(dangling_mates.begin());
+      read_pq.push(dangling_mates.begin()->second.mr.r);
+      dangling_mates.erase(dangling_mates.begin());
     }
-    
-    
     
     // empty priority queue at final iteration
     while(!read_pq.empty()){
-        
-        empty_pq(curr_gr, prev_gr, current_count,
-                 counts_hist, read_pq, input_file_name);
-     
+      empty_pq(curr_gr, prev_gr, current_count,
+	       counts_hist, read_pq, input_file_name);
     }//end empty read_pq while loop
     
-    
     if(counts_hist.size() < current_count + 1)
-        counts_hist.resize(current_count + 1, 0.0);
-    //if(current_count != 1)
+      counts_hist.resize(current_count + 1, 0.0);
+
     ++counts_hist[current_count];
-    
-    
+
     // make sure it's empty
     assert((read_pq.empty()));
     
@@ -564,36 +526,6 @@ load_counts_BED_se(const string input_file_name, vector<double> &counts_hist) {
     return n_reads;
 }
 
-/*
- static void
- update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
- const GenomicRegion &prev_gr,
- const string input_file_name,
- vector<double> &counts_hist,
- size_t &current_count){
- // check if reads are sorted
- if (curr_gr.same_chrom(prev_gr) &&
- curr_gr.get_start() < prev_gr.get_start()
- && curr_gr.get_end() < prev_gr.get_end()){
- cerr << "prev = " << prev_gr << endl;
- cerr << "curr = " << curr_gr << endl;
- throw SMITHLABException("locations unsorted in: " + input_file_name);
- }
- if (!curr_gr.same_chrom(prev_gr) ||
- curr_gr.get_start() != prev_gr.get_start() ||
- curr_gr.get_end() != prev_gr.get_end())
- // next read is new, update counts_hist to include current_count
- {
- // histogram is too small, resize
- if(counts_hist.size() < current_count + 1)
- counts_hist.resize(current_count + 1, 0.0);
- ++counts_hist[current_count];
- current_count = 1;
- }
- else // next read is same, update current_count
- ++current_count;
- }
- */
 
 static size_t
 load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
@@ -803,7 +735,7 @@ vector_median_and_ci(const vector<vector<double> > &bootstrap_estimates,
         
         yield_estimates.push_back(median_estimate);
         lower_ci_lognormal.push_back(lower_ci_estimate);
-        upper_ci_lognormal.push_back(median_estimate*upper_ci_estimate);
+        upper_ci_lognormal.push_back(upper_ci_estimate);
     }
 }
 
@@ -966,7 +898,7 @@ lc_extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
         size_t max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
         // refit curve for lower bound (degree of approx is 1 less than
         // max_terms)
-        max_terms = max_terms - (max_terms % 2 == 0);
+        max_terms = max_terms - (max_terms % 2 == 1);
         
         //refit curve for lower bound
         const ContinuedFractionApproximation
@@ -979,16 +911,17 @@ lc_extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
         if (lower_cf.is_valid()){
             double sample_size = static_cast<double>(sample);
             while(sample_size < max_extrapolation){
-                const double one_minus_fold_extrap = (sample_size - sample_vals_sum)/sample_vals_sum;
-                assert(one_minus_fold_extrap >= 0.0);
-                yield_vector.push_back(initial_distinct + one_minus_fold_extrap*lower_cf(one_minus_fold_extrap));
-                sample_size += step_size;
+	      const double one_minus_fold_extrap = (sample_size - sample_vals_sum)/sample_vals_sum;
+	      assert(one_minus_fold_extrap >= 0.0);
+	      yield_vector.push_back(initial_distinct 
+				     + one_minus_fold_extrap*lower_cf(one_minus_fold_extrap));
+	      sample_size += step_size;
             }
             
             // SANITY CHECK
             if (check_yield_estimates(yield_vector)) {
                 bootstrap_estimates.push_back(yield_vector);
-                if (VERBOSE) cerr << '.';
+                if (VERBOSE) cerr << lower_cf.degree << ", ";
             }
             else if (VERBOSE){
                 cerr << "_";
@@ -1061,7 +994,7 @@ lc_extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
     
     // refit curve for lower bound (degree of approx is 1 less than
     // max_terms)
-    max_terms = max_terms - (max_terms % 2 == 0);
+    max_terms = max_terms - (max_terms % 2 == 1);
     
     const ContinuedFractionApproximation
     lower_cfa(diagonal, max_terms, step_size, max_extrapolation);
@@ -1146,7 +1079,7 @@ lc_extrap(const bool VERBOSE,
           const bool BAM_FORMAT_INPUT,
 #endif
           const size_t MIN_REQUIRED_COUNTS,
-          const size_t orig_max_terms,
+          size_t orig_max_terms,
           const double max_extrapolation,
           double step_size,
           const size_t bootstraps,
@@ -1207,18 +1140,27 @@ lc_extrap(const bool VERBOSE,
         if(VERBOSE)
             cerr << "ADJUSTED_STEP_SIZE = " << step_size << endl;
     }
-    
+
+    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+    size_t counts_before_first_zero = 1;
+    while (counts_before_first_zero < counts_hist.size() &&
+           counts_hist[counts_before_first_zero] > 0)
+        ++counts_before_first_zero;
+
+    orig_max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
+    orig_max_terms = orig_max_terms - (orig_max_terms % 2 == 1);
+        
     
     const size_t distinct_counts =
     static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
                                       bind2nd(std::greater<double>(), 0.0)));
     if (VERBOSE)
         cerr << "TOTAL READS     = " << n_reads << endl
-        << "DISTINCT READS  = " << distinct_reads << endl
-        << "DISTINCT COUNTS = " << distinct_counts << endl
-        << "MAX COUNT       = " << max_observed_count << endl
-        << "COUNTS OF 1     = " << counts_hist[1] << endl
-        << "MAX TERMS       = " << orig_max_terms << endl;
+	     << "DISTINCT READS  = " << distinct_reads << endl
+	     << "DISTINCT COUNTS = " << distinct_counts << endl
+	     << "MAX COUNT       = " << max_observed_count << endl
+	     << "COUNTS OF 1     = " << counts_hist[1] << endl
+	     << "MAX TERMS       = " << orig_max_terms << endl;
     
     if (VERBOSE) {
         // OUTPUT THE ORIGINAL HISTOGRAM
@@ -1238,7 +1180,6 @@ lc_extrap(const bool VERBOSE,
     size_t total_reads = 0;
     for(size_t i = 0; i < counts_hist.size(); i++)
         total_reads += i*counts_hist[i];
-    cerr << "total reads" << total_reads;
     assert(total_reads == n_reads);
     
     
@@ -1255,11 +1196,12 @@ lc_extrap(const bool VERBOSE,
     if(VERBOSE)
         cerr << "[ESTIMATING YIELD CURVE]" << endl;
     vector<double> yield_estimates;
-    bool SINGLE_ESTIMATE_SUCCESS =
-    lc_extrap_single_estimate(VERBOSE, counts_hist, orig_max_terms, diagonal,
-                              step_size, max_extrapolation, yield_estimates);
+ 
     
     if(SINGLE_ESTIMATE){
+      bool SINGLE_ESTIMATE_SUCCESS =
+	lc_extrap_single_estimate(VERBOSE, counts_hist, orig_max_terms, diagonal,
+				  step_size, max_extrapolation, yield_estimates);
         // IF FAILURE, EXIT
         if(!SINGLE_ESTIMATE_SUCCESS)
             throw SMITHLABException("SINGLE ESTIMATE FAILED, NEED TO RUN FULL MODE FOR ESTIMATES");
@@ -1283,10 +1225,6 @@ lc_extrap(const bool VERBOSE,
         if (VERBOSE)
             cerr << "[BOOTSTRAPPING HISTOGRAM]" << endl;
         
-        
-        if(VERBOSE && !SINGLE_ESTIMATE_SUCCESS)
-            cerr << "SINGLE ESTIMATE FAILED, NEED TO ESTIMATE MEDIAN FROM BOOTSTRAPS" << endl;
-        
         const size_t max_iter = 4*bootstraps;
         
         vector<vector <double> > bootstrap_estimates;
@@ -1301,17 +1239,18 @@ lc_extrap(const bool VERBOSE,
         
         // yield ci
         vector<double> yield_upper_ci_lognormal, yield_lower_ci_lognormal;
-        
-        if(!SINGLE_ESTIMATE_SUCCESS){
+	     
+        //if(!SINGLE_ESTIMATE_SUCCESS){
             // use bootstrap estimates to obtain median estimates
             vector_median_and_ci(bootstrap_estimates, c_level, yield_estimates,
                                  yield_lower_ci_lognormal, yield_upper_ci_lognormal);
-        }
+	    /*    }
         else{
+	
             // use single estimates as the expected complexity curve
             ci_given_estimates(bootstrap_estimates, c_level, yield_estimates,
                                yield_lower_ci_lognormal, yield_upper_ci_lognormal);
-        }
+			       }*/
         
         /////////////////////////////////////////////////////////////////////
         if (VERBOSE)
@@ -1492,13 +1431,12 @@ main(const int argc, const char **argv) {
     
     try {
         
-        const size_t MIN_REQUIRED_COUNTS = 5;
+        const size_t MIN_REQUIRED_COUNTS = 4;
         
         /* FILES */
         string outfile;
-        //   string input_file_name2 = "SRR726645.sort.mr";
         
-        size_t orig_max_terms = 1000;
+        size_t orig_max_terms = 100;
         double max_extrapolation = 1.0e10;
         size_t upper_limit = 0;
         

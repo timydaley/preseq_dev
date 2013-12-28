@@ -234,7 +234,7 @@ main(int argc, const char **argv) {
 
           // dangling mates is too large, flush dangling_mates of reads
 	  // on different chroms and too far away 
-	  if (dangling_mates.size() > 5000)
+	  if (dangling_mates.size() > 100000)
 	  {
 	    //   if(VERBOSE)
 	    //  cerr << "dangling mates too large, emptying" << endl;

@@ -79,16 +79,15 @@ static void
 quotdiff_algorithm(const vector<double> &ps_coeffs, vector<double> &cf_coeffs) { //vector for power series coefficients & vector for continued fraction coefficients
   
   const size_t depth = ps_coeffs.size(); //degree of power series
-  vector< vector<double> > q_table(depth, vector<double>(depth+1, 0.0)); //an array that is depth x depth+1
+  vector< vector<double> > q_table(depth, vector<double>(depth+1, 0.0));
   vector< vector<double> > e_table(depth, vector<double>(depth+1, 0.0));
 
-  for (size_t j = 0; j < depth-1; j++) //fill first position in the q_table with a vector that holds the ratio of power series coeff Cn to Cn-1
+  for (size_t j = 0; j < depth-1; j++) 
     q_table[1][j] = ps_coeffs[j + 1]/ps_coeffs[j];
   
-  for (size_t j = 0; j < depth-1; j++) //fill first position in e_table with the quotient difference algorithm relation 
+  for (size_t j = 0; j < depth-1; j++) 
     e_table[1][j] = q_table[1][j + 1] - q_table[1][j] + e_table[0][j + 1];
     
-
   //using intial values of E(i)(j)'s and Q(i)(j)'s, fill rest of the q table and e table
   for (size_t i = 2; i < depth; i++) {
     for (size_t j = 0; j < depth; j++)
@@ -97,21 +96,17 @@ quotdiff_algorithm(const vector<double> &ps_coeffs, vector<double> &cf_coeffs) {
     for (size_t j = 0; j < depth; j++)
       e_table[i][j] = q_table[i][j + 1] - q_table[i][j] + e_table[i - 1][j + 1];
   }
-    
-    
-  
+
   cf_coeffs.push_back(ps_coeffs[0]); //add first power series coefficient to end of vector for continued fraction coefficients
-    
 
   //setting coefficients for continued fraction 
   for (size_t i = 1; i < depth; ++i) {
-      //alternate appending the value in e[i][0] and value in q[i][0] (change signs) to the vector for cont. frac. coeffs
     if (i % 2 == 0) 
       cf_coeffs.push_back(-e_table[i/2][0]);
     else
       cf_coeffs.push_back(-q_table[(i + 1)/2][0]);
   }
-}
+}  
 
 
 // compute CF coeffs when upper_offset > 0
@@ -185,6 +180,32 @@ ContinuedFraction::decrease_degree(const ContinuedFraction &CF,
   decreasedCF.degree = CF.degree - decrement;
 
   return decreasedCF;
+}
+
+ContinuedFraction
+ContinuedFraction::truncate_degree(const ContinuedFraction &CF,
+				   const size_t n_terms){
+  ContinuedFraction truncated_CF;
+  if(CF.degree < n_terms){
+    cerr << "current CF degree   = " << CF.degree << endl;
+    cerr << "truncated CF degree = " << n_terms << endl; 
+    throw SMITHLABException("degree of truncate CF must be at least as large as current");
+  }
+
+  vector<double> truncated_ps_coeffs(CF.ps_coeffs);
+  vector<double> truncated_cf_coeffs(CF.cf_coeffs);
+  vector<double> truncated_offset_coeffs(CF.offset_coeffs);
+
+  truncated_ps_coeffs.resize(n_terms);
+  truncated_cf_coeffs.resize(n_terms - truncated_offset_coeffs.size());
+
+  truncated_CF.ps_coeffs = truncated_ps_coeffs;
+  truncated_CF.cf_coeffs = truncated_cf_coeffs;
+  truncated_CF.offset_coeffs = truncated_offset_coeffs;
+  truncated_CF.diagonal_idx = CF.diagonal_idx;
+  truncated_CF.degree = n_terms;
+
+  return truncated_CF;
 }
 
 ContinuedFraction::ContinuedFraction(const vector<double> &ps_cf, 
@@ -895,7 +916,11 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
   //do this outside
   // ensure that we will use an underestimate
   //  const size_t local_max_terms = max_terms - (max_terms % 2 == 1); 
-  
+ 
+  if(max_terms >= counts_hist.size()){
+    cerr << "max terms = " << max_terms << endl;
+    cerr << "hist size = " << counts_hist.size() << endl;
+  } 
   assert(max_terms < counts_hist.size());
   
   // counts_sum = number of total captures
@@ -903,29 +928,38 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
   for(size_t i = 0; i < counts_hist.size(); i++)
     counts_sum += i*counts_hist[i];
   
-  vector<double> ps_coeffs;
+  vector<double> full_ps_coeffs;
+  for (size_t j = 1; j <= max_terms; j++)
+    full_ps_coeffs.push_back(counts_hist[j]*pow(-1, j + 1));
 
-  for (size_t j = 1; j < max_terms; j++)
-    ps_coeffs.push_back(counts_hist[j]*pow(-1, j + 1));  
+  ContinuedFraction full_CF(full_ps_coeffs, -1, max_terms);  
 
-  ContinuedFraction curr_cf(ps_coeffs, -1, max_terms - 1);
-  
-  while (curr_cf.degree >= MIN_ALLOWED_DEGREE) {    
-    // compute the estimates for the desired set of points
+  // if max terms < 8 (i.e. 6 or 4), check only that degree
+  if(max_terms < 8 && max_terms >= 4){   
     vector<double> estimates;
-    curr_cf.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
-    
+    full_CF.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
     // return the continued fraction if it is stable
     if (check_yield_estimates_stability(estimates))
-      return curr_cf;
-    
-    // if not cf not acceptable, decrease degree
-    curr_cf = ContinuedFraction::decrease_degree(curr_cf, 2);
+      return full_CF;
   }
-  
-  //  throw SMITHLABException("unable to fit continued fraction");
-  
-  // no stable continued fraction: return null
+  else{
+    //if max terms >= 8, start at 8 and check increasing cont frac's
+    size_t curr_terms = 8;
+    while (curr_terms <= max_terms) {    
+      ContinuedFraction curr_cf 
+	= ContinuedFraction::truncate_degree(full_CF, curr_terms);
+      vector<double> estimates;
+      curr_cf.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
+          
+    // return the continued fraction if it is stable
+      if (check_yield_estimates_stability(estimates))
+	return curr_cf;
+    
+      curr_terms += 2;
+    // if not cf not acceptable, increase degree
+    }
+  }
+   // no stable continued fraction: return null
   return ContinuedFraction();  
 }
 

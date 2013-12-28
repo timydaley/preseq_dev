@@ -100,6 +100,9 @@ struct ContinuedFraction {
   // Return new ContinuedFraction with degree decrement less than CF
   static ContinuedFraction decrease_degree(const ContinuedFraction &CF,
                                            const size_t decrement);
+
+  static ContinuedFraction truncate_degree(const ContinuedFraction &fullCF,
+					   const size_t truncated_degree);
   
   std::vector<double> ps_coeffs;
   std::vector<double> cf_coeffs;
@@ -149,7 +152,7 @@ private:
 
   double locate_zero_cf_deriv(const ContinuedFraction &cf, 
                               const double val, const double prev_val) const;
-  static const size_t MIN_ALLOWED_DEGREE = 5;
+  static const size_t MIN_ALLOWED_DEGREE = 4;
   
   // largest value to search for lowerbound and stability
   static const double SEARCH_MAX_VAL = 200; 
