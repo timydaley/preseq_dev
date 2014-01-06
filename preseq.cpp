@@ -439,6 +439,7 @@ load_counts_BAM_pe(const bool VERBOSE,
       read_pq.push(dangling_mates.begin()->second.mr.r);
       dangling_mates.erase(dangling_mates.begin());
     }
+  
     
     // empty priority queue at final iteration
     while(!read_pq.empty()){
@@ -1098,7 +1099,7 @@ lc_extrap(const bool VERBOSE,
             cerr << "INPUT_HIST" << endl;
         n_reads = load_histogram(input_file_name, counts_hist);
     }
-    if(VALS_INPUT){
+    else if(VALS_INPUT){
         if(VERBOSE)
             cerr << "VALS_INPUT" << endl;
         n_reads = load_counts(input_file_name, counts_hist);
@@ -1178,8 +1179,10 @@ lc_extrap(const bool VERBOSE,
     
     
     size_t total_reads = 0;
-    for(size_t i = 0; i < counts_hist.size(); i++)
+    for(size_t i = 0; i < counts_hist.size(); i++){
         total_reads += i*counts_hist[i];
+        cerr << "total reads " << total_reads << endl;
+    }
     assert(total_reads == n_reads);
     
     
