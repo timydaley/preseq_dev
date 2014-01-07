@@ -1,4 +1,4 @@
-/*    Copyright (C) 2011 University of Southern California and
+/*    Copyright (C) 2013 University of Southern California and
  *                       Andrew D. Smith and Timothy Daley
  *
  *    Authors: Andrew D. Smith and Timothy Daley
@@ -218,7 +218,7 @@ ContinuedFraction::ContinuedFraction(const vector<double> &ps_cf,
     quotdiff_above_diagonal(ps_coeffs, diagonal_idx, cf_coeffs, offset_coeffs);
   else // if(cont_frac_estimate.lower_offset > 0) {
     quotdiff_below_diagonal(ps_coeffs, -diagonal_idx, cf_coeffs, offset_coeffs);
-  // notice the "-" above...
+  // notice the "-" above so that -diagonal_idx > 0
 }
 
 
@@ -318,7 +318,7 @@ evaluate_below_diagonal(const vector<double> &cf_coeffs,
   }
   
   double offset_terms = 0.0;
-  for (size_t i = 0; i < offset_coeffs.size(); i++)
+  for (size_t i = 0; i < min(offset_coeffs.size(), depth); i++)
     offset_terms += offset_coeffs[i]*pow(val, i);
   
   // recall that if lower_offset > 0, we are working with 1/f, invert approx
@@ -934,8 +934,8 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
 
   ContinuedFraction full_CF(full_ps_coeffs, -1, max_terms);  
 
-  // if max terms < 8 (i.e. 6 or 4), check only that degree
-  if(max_terms < 8 && max_terms >= 4){   
+  // if max terms = 4, check only that degree
+  if(max_terms == 4){   
     vector<double> estimates;
     full_CF.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
     // return the continued fraction if it is stable
@@ -944,7 +944,7 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
   }
   else{
     //if max terms >= 8, start at 8 and check increasing cont frac's
-    size_t curr_terms = 8;
+    size_t curr_terms = 6;
     while (curr_terms <= max_terms) {    
       ContinuedFraction curr_cf 
 	= ContinuedFraction::truncate_degree(full_CF, curr_terms);
