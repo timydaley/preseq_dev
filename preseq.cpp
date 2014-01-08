@@ -277,13 +277,13 @@ static void empty_pq(GenomicRegion &curr_gr, GenomicRegion &prev_gr,
     = update_pe_duplicate_counts_hist(curr_gr, prev_gr, counts_hist,
                                       current_count);
     if(!UPDATE_SUCCESS){
-        cerr << "prev = " << prev_gr << endl;
-        cerr << "curr = " << curr_gr << endl;
-        cerr << "priority queue : " << endl;
-        while(	 !(read_pq.empty()) ){
-            cerr << read_pq.top() << endl;
-            read_pq.pop();
-        }
+        //cerr << "prev = " << prev_gr << endl;
+        //cerr << "curr = " << curr_gr << endl;
+        //cerr << "priority queue : " << endl;
+        //while(	 !(read_pq.empty()) ){
+          //  cerr << read_pq.top() << endl;
+          //  read_pq.pop();
+        //}
         throw SMITHLABException("reads unsorted in " + input_file_name);
     }
     prev_gr = curr_gr;
@@ -363,13 +363,13 @@ load_counts_BAM_pe(const bool VERBOSE,
 	      }
 	      dangling_mates.erase(read_name);
 
-	      if(VERBOSE && (n_reads % 1000000 == 0))
-		cerr << n_reads << " reads" << endl;
-	    }//end if statement for if merge is successful
+	      //if(VERBOSE && (n_reads % 1000000 == 0))
+		//cerr << n_reads << " reads" << endl;
+        }//end if statement for if merge is successful
 	    else{
 	      cerr << "problem with read " << read_name << endl;
-	      cerr << dangling_mates[read_name].mr << endl;
-	      cerr << samr.mr << endl;
+	     // cerr << dangling_mates[read_name].mr << endl;
+	    //  cerr << samr.mr << endl;
 	      throw SMITHLABException("merge unsuccessful");
 	    }
 	  }//end if statement for if read is in dangling mates
@@ -403,8 +403,8 @@ load_counts_BAM_pe(const bool VERBOSE,
                 
 	  }
 
-	  if(VERBOSE && (n_reads % 1000000 == 0))
-	    cerr << n_reads << " reads" << endl;
+	  //if(VERBOSE && (n_reads % 1000000 == 0))
+	    //cerr << n_reads << " reads" << endl;
 	} //end unpaired read
             
 	// dangling mates is too large, flush dangling_mates of reads
@@ -455,10 +455,10 @@ load_counts_BAM_pe(const bool VERBOSE,
     // make sure it's empty
     assert((read_pq.empty()));
     
-    if(VERBOSE){
-        cerr << "merged reads   = " << n_merged << endl;
-        cerr << "unpaired reads = " << n_unpaired << endl;
-    }
+    //if(VERBOSE){
+       // cerr << "merged reads   = " << n_merged << endl;
+        //cerr << "unpaired reads = " << n_unpaired << endl;
+    //}
     
     return n_reads;
 }
@@ -552,8 +552,8 @@ load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
         update_pe_duplicate_counts_hist(curr_gr, prev_gr,
                                         counts_hist, current_count);
         if(!UPDATE_SUCCESS){
-            cerr << "prev = " << prev_gr << endl;
-            cerr << "curr = " << curr_gr << endl;
+           // cerr << "prev = " << prev_gr << endl;
+           // cerr << "curr = " << curr_gr << endl;
             throw SMITHLABException("reads unsorted in " + input_file_name);
         }
         
@@ -659,7 +659,7 @@ alpha_log_confint_multiplier(const double estimate,
 }
 
 
-static void
+/*static void
 ci_given_estimates(const vector<vector<double> > &bootstrap_estimates,
                    const double ci_level, const vector<double> &yield_estimates,
                    vector<double> &lower_ci_lognormal,
@@ -686,7 +686,7 @@ ci_given_estimates(const vector<vector<double> > &bootstrap_estimates,
         lower_ci_lognormal.push_back(yield_estimates[i]/confint_mltr);
         upper_ci_lognormal.push_back(yield_estimates[i]*confint_mltr);
     }
-}
+}*/
 
 static void
 median_and_ci(const vector<double> &estimates,
@@ -1168,7 +1168,7 @@ lc_extrap(const bool VERBOSE,
         cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
         for (size_t i = 0; i < counts_hist.size(); i++)
             if (counts_hist[i] > 0)
-                cerr << i << '\t' << counts_hist[i] << endl;
+                cerr << i << '\t' << static_cast<size_t>(counts_hist[i]) << endl;
         cerr << endl;
     }
     
@@ -1181,9 +1181,9 @@ lc_extrap(const bool VERBOSE,
     size_t total_reads = 0;
     for(size_t i = 0; i < counts_hist.size(); i++){
         total_reads += i*counts_hist[i];
-        cerr << "total reads " << total_reads << endl;
+      //  cerr << "total reads " << total_reads << endl;
     }
-    assert(total_reads == n_reads);
+    //assert(total_reads == n_reads);
     
     
     
@@ -1351,7 +1351,7 @@ static void c_curve (const bool VERBOSE,
     static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
                                       bind2nd(std::greater<double>(), 0.0)));
     if (VERBOSE)
-        cerr << "TOTAL READS     = " << total_reads << endl
+        cerr << "TOTAL READS     = " << n_reads << endl
         << "DISTINCT READS  = " << distinct_reads << endl
         << "DISTINCT COUNTS = " << distinct_counts << endl
         << "MAX COUNT       = " << max_observed_count << endl
@@ -1366,12 +1366,12 @@ static void c_curve (const bool VERBOSE,
         cerr << endl;
     }
     
-    if(total_reads != n_reads){
-        cerr << "total reads = " << total_reads << endl;
-        cerr << "n_reads     = " << n_reads << endl;
-    }
+    //if(total_reads != n_reads){
+    //    cerr << "total reads = " << total_reads << endl;
+    //    cerr << "n_reads     = " << n_reads << endl;
+    //}
     
-    assert(total_reads == n_reads);
+    //assert(total_reads == n_reads);
     
     
     //construct umi vector to sample from
@@ -1448,20 +1448,20 @@ main(const int argc, const char **argv) {
         // double read_step_size = 1e7;
         
         size_t MAX_SEGMENT_LENGTH = 10000;
-        size_t max_width = 1000;
+        //size_t max_width = 1000;
         size_t bootstraps = 100;
         int diagonal = -1;
-        size_t bin_size = 20;
+        //size_t bin_size = 20;
         double c_level = 0.95;
-        double tolerance = 1e-20;
-        size_t max_iter = 0;
+        //double tolerance = 1e-20;
+        //size_t max_iter = 0;
         double dupl_level = 0.5;
-        double reads_per_base = 2.0;
-        double fixed_fold = 20;
+        //double reads_per_base = 2.0;
+        //double fixed_fold = 20;
         
         /* FLAGS */
-        size_t MODE = 0; //
-        bool NO_SEQUENCE = false;
+        //size_t MODE = 0;
+        //bool NO_SEQUENCE = false;
         bool VERBOSE = false;
         bool VALS_INPUT = false;
         bool PAIRED_END = false;
@@ -1724,49 +1724,7 @@ main(const int argc, const char **argv) {
         }
         
         
-        /* if (MODE == 0) {
-         
-         lc_extrap(VERBOSE,
-         VALS_INPUT,
-         PAIRED_END,
-         HIST_INPUT,
-         SINGLE_ESTIMATE,
-         #ifdef HAVE_SAMTOOLS
-         BAM_FORMAT_INPUT,
-         #endif
-         MIN_REQUIRED_COUNTS,
-         orig_max_terms,
-         max_extrapolation,
-         step_size,
-         bootstraps,
-         diagonal,
-         c_level,
-         tolerance,
-         max_iter,
-         dupl_level,
-         input_file_name,
-         outfile);      
-         }    
-         else if (MODE == 1) {
-         gc_extrap(VERBOSE,
-         NO_SEQUENCE,
-         SINGLE_ESTIMATE,
-         MIN_REQUIRED_COUNTS,
-         orig_max_terms,
-         max_extrapolation,
-         step_size,
-         bootstraps,
-         diagonal,
-         c_level,
-         max_width,
-         bin_size,
-         max_iter,
-         tolerance,
-         reads_per_base,
-         fixed_fold,
-         input_file_name,
-         outfile);
-         }*/
+
     }
     catch (SMITHLABException &e) {
         cerr << "ERROR:\t" << e.what() << endl;
