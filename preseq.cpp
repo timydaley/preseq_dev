@@ -185,13 +185,16 @@ merge_mates(const size_t suffix_len, const size_t range,
     
 }
 
+// check if reads have same name & chrom
 inline static bool
-same_read(const size_t suffix_len,
-          const MappedRead &a, const MappedRead &b) {
-    const string sa(a.r.get_name());
-    const string sb(b.r.get_name());
-    return std::equal(sa.begin(), sa.end() - suffix_len, sb.begin());
+same_read(const size_t suffix_len, 
+	  const MappedRead &a, const MappedRead &b) {
+  const string sa(a.r.get_name());
+  const string sb(b.r.get_name());
+  return (std::equal(sa.begin(), sa.end() - suffix_len, sb.begin())
+	  && a.r.same_chrom(b.r));
 }
+
 
 static bool
 update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
@@ -330,82 +333,85 @@ load_counts_BAM_pe(const bool VERBOSE,
                 
 	  if (dangling_mates.find(read_name) != dangling_mates.end()){
 	    // other end is in dangling mates, merge the two mates
-	    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
-	    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+	    if(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr)){
+	      if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
                     
-	    GenomicRegion merged;
-	    int len = 0;
-	    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
-			dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
+	      GenomicRegion merged;
+	      int len = 0;
+	      merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			  dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
 	    // merge success!
-	    if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
+	      if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
 	      // first iteration
-	      if(n_reads == 0){
-		prev_gr = merged;
-		++n_reads;
-		++n_merged;
-	      }
-	      else{
-		++n_reads;
-		++n_merged;
-		read_pq.push(merged);
+		if(n_reads == 0){
+		  prev_gr = merged;
+		  ++n_reads;
+		  ++n_merged;
+		}
+		else{
+		  ++n_reads;
+		  ++n_merged;
+		  read_pq.push(merged);
                             
-		if(!(read_pq.empty()) &&
-		   GenomicRegionOrderChecker::is_ready(read_pq, merged, MAX_SEGMENT_LENGTH)) {
+		  if(!(read_pq.empty()) &&
+		     GenomicRegionOrderChecker::is_ready(read_pq, merged, MAX_SEGMENT_LENGTH)) {
 		  //begin emptying priority queue
-		  while(!(read_pq.empty()) &&
-			GenomicRegionOrderChecker::is_ready(read_pq, merged,
-							    MAX_SEGMENT_LENGTH) ){
-		    empty_pq(curr_gr, prev_gr, current_count,
-			     counts_hist, read_pq, input_file_name);
-		  }//end while loop
-		}//end statement for emptying priority queue
-	      }
-	      dangling_mates.erase(read_name);
+		    while(!(read_pq.empty()) &&
+			  GenomicRegionOrderChecker::is_ready(read_pq, merged,
+							      MAX_SEGMENT_LENGTH) ){
+		      empty_pq(curr_gr, prev_gr, current_count,
+			       counts_hist, read_pq, input_file_name);
+		    }//end while loop
+		  }//end statement for emptying priority queue
+		}
+		dangling_mates.erase(read_name);
+	     
 
-	      //if(VERBOSE && (n_reads % 1000000 == 0))
-		//cerr << n_reads << " reads" << endl;
-        }//end if statement for if merge is successful
+	      }//end if statement for if merge is successful
+	      else{
+		cerr << "problem with read " << read_name << endl;
+
+		throw SMITHLABException("merge unsuccessful");
+	      }
+	    }
 	    else{
-	      cerr << "problem with read " << read_name << endl;
-	     // cerr << dangling_mates[read_name].mr << endl;
-	    //  cerr << samr.mr << endl;
-	      throw SMITHLABException("merge unsuccessful");
+	      // problem mergin reads from "different" chrom like chr1 & chr1_gl000191_random
+	      // flagged as proper pair, but not
+	      read_pq.push(samr.mr.r);
+	      read_pq.push(dangling_mates[read_name].mr.r);
 	    }
 	  }//end if statement for if read is in dangling mates
 	  else{	// other end not in dangling mates, add this read to dangling mates.
 	    dangling_mates[read_name] = samr;
 	  }
-	}//end if statement for if mapping is paired
+	}
 	else{ // read is unpaired, put in queue
-	  if(n_reads == 0){ // first read
+	  if(n_reads == 0){
 	    ++n_reads;
 	    ++n_unpaired;
 	    prev_gr = samr.mr.r;
 	  }
-	  else{ // not first read
+	  else{ 
 	    ++n_reads;
 	    ++n_unpaired;
 	    read_pq.push(samr.mr.r);
  
 	    if(!(read_pq.empty()) &&
 	       GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r, MAX_SEGMENT_LENGTH)) {
-	      //begin emptying priority queue
+	     
 	      while(!(read_pq.empty()) &&
 		    GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r,
 							MAX_SEGMENT_LENGTH) ){
                               
 		empty_pq(curr_gr, prev_gr, current_count,
 			 counts_hist, read_pq, input_file_name);
-	      }//end while loop
+	      }
                     
-	    }//end statement for emptying priority queue
+	    }
                 
 	  }
 
-	  //if(VERBOSE && (n_reads % 1000000 == 0))
-	    //cerr << n_reads << " reads" << endl;
-	} //end unpaired read
+	} 
             
 	// dangling mates is too large, flush dangling_mates of reads
 	// on different chroms and too far away
@@ -420,7 +426,7 @@ load_counts_BAM_pe(const bool VERBOSE,
 	    if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
 		|| (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
 		    && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
-		    samr.mr.r.get_start())) // put reads in the queue that are too far away
+		    samr.mr.r.get_start())) 
 	      {
 		if(itr->second.seg_len >= 0)
 		  read_pq.push(itr->second.mr.r);
@@ -431,8 +437,8 @@ load_counts_BAM_pe(const bool VERBOSE,
 	  std::swap(tmp, dangling_mates);
 	}
             
-      }//end if statement for if read is mapped and primary
-    }//end loop for reading in BAM file. reached end of file
+      }
+    }
     
     // empty dangling mates of any excess reads
     while (!dangling_mates.empty()) {
@@ -440,30 +446,24 @@ load_counts_BAM_pe(const bool VERBOSE,
       dangling_mates.erase(dangling_mates.begin());
     }
   
-    
-    // empty priority queue at final iteration
+    //final iteration
     while(!read_pq.empty()){
       empty_pq(curr_gr, prev_gr, current_count,
 	       counts_hist, read_pq, input_file_name);
-    }//end empty read_pq while loop
+    }
     
     if(counts_hist.size() < current_count + 1)
       counts_hist.resize(current_count + 1, 0.0);
 
     ++counts_hist[current_count];
 
-    // make sure it's empty
     assert((read_pq.empty()));
-    
-    //if(VERBOSE){
-       // cerr << "merged reads   = " << n_merged << endl;
-        //cerr << "unpaired reads = " << n_unpaired << endl;
-    //}
     
     return n_reads;
 }
 
 #endif
+
 
 /*
  this code is for BED file input

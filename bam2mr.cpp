@@ -127,7 +127,8 @@ same_read(const size_t suffix_len,
 	  const MappedRead &a, const MappedRead &b) {
   const string sa(a.r.get_name());
   const string sb(b.r.get_name());
-  return std::equal(sa.begin(), sa.end() - suffix_len, sb.begin());
+  return (std::equal(sa.begin(), sa.end() - suffix_len, sb.begin())
+	  && a.r.same_chrom(b.r));
 }
 
 static void
@@ -213,19 +214,23 @@ main(int argc, const char **argv) {
 	      0, samr.mr.r.get_name().size() - suffix_len);
 	  if (dangling_mates.find(read_name) != dangling_mates.end()){
 	    // other end is in dangling mates, merge the two mates
-	    assert(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr));
-	    if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
-	    revcomp(samr.mr);
+	    if(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr)){
+	      if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+	      revcomp(samr.mr);
 
-	    MappedRead merged;
-	    int len = 0;
-	    merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
-			dangling_mates[read_name].mr, samr.mr, merged, len);
-	    if (len > 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)) 
-	      out << merged << endl;
+	      MappedRead merged;
+	      int len = 0;
+	      merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			  dangling_mates[read_name].mr, samr.mr, merged, len);
+	      if (len > 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)) 
+		out << merged << endl;
+	      else
+		out << dangling_mates[read_name].mr << endl << samr.mr << endl;
+	      dangling_mates.erase(read_name);
+	    }
 	    else
 	      out << dangling_mates[read_name].mr << endl << samr.mr << endl;
-	    dangling_mates.erase(read_name);
+
 	  }
 	  else
 	  {
