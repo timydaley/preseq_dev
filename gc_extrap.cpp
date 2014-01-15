@@ -936,6 +936,7 @@ main(const int argc, const char **argv) {
        bin_step_size = std::max(bin_step_size, bin_step_size*round(total_bins/(20*bin_step_size)));
        if(VERBOSE)
 	 cerr << "ADJUSTED_STEP_SIZE = " << bin_step_size << endl;
+       base_step_size = bin_step_size*bin_size;
     }
     // recorrect the read step size
     //read_step_size = bin_step_size/avg_bins_per_read;
