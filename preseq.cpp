@@ -1504,6 +1504,10 @@ main(const int argc, const char **argv) {
 #ifdef HAVE_SAMTOOLS
             opt_parse.add_opt("bam", 'B', "input is in BAM format",
                               false, BAM_FORMAT_INPUT);
+	    opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
+			      "paired end bam reads (default: " 
+			      + toa(MAX_SEGMENT_LENGTH) + ")", 
+			      false, MAX_SEGMENT_LENGTH);
 #endif
             opt_parse.add_opt("pe", 'P', "input is paired end read file",
                               false, PAIRED_END);
@@ -1578,6 +1582,10 @@ main(const int argc, const char **argv) {
 #ifdef HAVE_SAMTOOLS
             opt_parse.add_opt("bam", 'B', "input is in BAM format",
                               false, BAM_FORMAT_INPUT);
+	    opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
+			      "paired end bam reads (default: " 
+			      + toa(MAX_SEGMENT_LENGTH) + ")", 
+			      false, MAX_SEGMENT_LENGTH);
 #endif
             opt_parse.add_opt("pe", 'P', "input is paired end read file",
                               false, PAIRED_END);
