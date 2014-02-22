@@ -73,6 +73,7 @@ struct ContinuedFraction {
   void 
   extrapolate_saturation(const std::vector<double> &counts_hist,
                          const double vals_sum,
+			 const double initial_extrap_val,
                          const double max_value, 
                          const double step_size,
                          std::vector<double> &saturation) const;
@@ -82,6 +83,7 @@ struct ContinuedFraction {
   void 
   extrapolate_yield_deriv(const std::vector<double> &counts_hist,
                           const double vals_sum,
+			  const double initial_extrap_val,
                           const double max_value, 
                           const double step_size,
                           std::vector<double> &saturation) const;
@@ -155,10 +157,10 @@ private:
   static const size_t MIN_ALLOWED_DEGREE = 4;
   
   // largest value to search for lowerbound and stability
-  static const double SEARCH_MAX_VAL = 200; 
+  static const double SEARCH_MAX_VAL = 100; 
   
   //step size for search of lowerbound and stability
-  static const double SEARCH_STEP_SIZE = 0.01; 
+  static const double SEARCH_STEP_SIZE = 0.05; 
 
 };
 

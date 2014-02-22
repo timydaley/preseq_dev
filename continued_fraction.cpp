@@ -634,27 +634,27 @@ ContinuedFraction::extrapolate_mincount(const vector<double> &counts_hist,
 void
 ContinuedFraction::extrapolate_saturation(const vector<double> &counts_hist,
                                           const double vals_sum,
+					  const double initial_extrap_val,
                                           const double max_value,
                                           const double step_size,
                                           vector<double> &saturation_estimates) const {
-  saturation_estimates.clear();
-  for(double t = step_size; t <= max_value; t += step_size)
+  for(double t = initial_extrap_val; t < max_value; t += step_size)
     saturation_estimates.push_back(operator()(t)/vals_sum);
 }
-
 
 void
 ContinuedFraction::extrapolate_yield_deriv(const vector<double> &counts_hist,
                                            const double vals_sum,
+					   const double initial_extrap_val, 
                                            const double max_value,
                                            const double step_size,
                                            vector<double> &saturation_estimates) const {
-  saturation_estimates.clear();
   //  saturation_estimates.push_back(counts_hist[1]/vals_sum);
-  for(double t = step_size; t <= max_value; t += step_size)
+  for(double t = initial_extrap_val; t < max_value; t += step_size)
     saturation_estimates.push_back((operator()(t) 
                                     + t*complex_deriv(t))/vals_sum);
 }
+
 
 //////////////////////////////////////////////////////////
 // Y50: expected # reads to have 50% distinct (or 50% duplicates)
@@ -1283,30 +1283,36 @@ ContinuedFractionApproximation::optimal_cont_frac_satur(const vector<double> &co
   for(size_t i = 0; i < counts_hist.size(); i++)
     counts_sum += i*counts_hist[i];
   
-  vector<double> ps_coeffs;
+  vector<double> full_ps_coeffs;
   for (size_t j = 1; j < max_terms; j++)
-    ps_coeffs.push_back(counts_hist[j]*j*pow(-1, j + 1));
+    full_ps_coeffs.push_back(counts_hist[j]*j*pow(-1, j + 1));
 
-  ContinuedFraction old_cf(ps_coeffs, diagonal_idx, max_terms - 1);
-  ContinuedFraction new_cf;
+  ContinuedFraction full_CF(full_ps_coeffs, -1, max_terms); 
 
-  while(old_cf.degree >= MIN_ALLOWED_DEGREE) {    
-    // compute the estimates for the desired set of points
+  if(max_terms == 4){
     vector<double> estimates;
-    old_cf.extrapolate_yield_deriv(counts_hist, counts_sum,
-                                  SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
-    
-    // return the continued fraction if it is stable
+    full_CF.extrapolate_yield_deriv(counts_hist, counts_sum, 0.0,  
+				    SEARCH_MAX_VAL, SEARCH_STEP_SIZE, 
+				    estimates);
     if (check_saturation_estimates(estimates))
-      return old_cf;
-
-    // if not cf not acceptable, decrease degree
-    new_cf = old_cf.decrease_degree(old_cf, 2);
-    old_cf = new_cf;
+      return full_CF;
   }
-  
-  //  throw SMITHLABException("unable to fit continued fraction");
-  
+  else{
+    size_t curr_terms = 6;
+    while (curr_terms <= max_terms){
+     ContinuedFraction curr_cf 
+	= ContinuedFraction::truncate_degree(full_CF, curr_terms);
+      vector<double> estimates;
+      curr_cf.extrapolate_saturation(counts_hist, counts_sum, 0.0,  
+				      SEARCH_MAX_VAL, SEARCH_STEP_SIZE, 
+				      estimates);
+    if (check_saturation_estimates(estimates))
+      return curr_cf;
+
+    curr_terms += 2;
+    }
+  }
+
   // no stable continued fraction: return null
   return ContinuedFraction();  
 }

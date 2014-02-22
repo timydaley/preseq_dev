@@ -19,12 +19,21 @@
  *    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include <fstream>
 #include <numeric>
 #include <vector>
 #include <iomanip>
+#include <queue>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string.h>
+#include <tr1/unordered_map>
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
 
 #include <gsl/gsl_cdf.h>
 #include <gsl/gsl_randist.h>
@@ -38,268 +47,650 @@
 
 #include "continued_fraction.hpp"
 
+
 using std::string;
+using std::min;
 using std::vector;
 using std::endl;
 using std::cerr;
 using std::max;
+using std::ifstream;
 
 using std::setw;
 using std::fixed;
 using std::setprecision;
+using std::priority_queue;
 using std::tr1::unordered_map;
+
+
+//////////////////////////////////////////////////////////////////////
+// Data imputation
+/////////////////////////////////////////////////////////////////////
+
+static bool
+update_pe_duplicate_counts_hist(const GenomicRegion &curr_gr,
+                                const GenomicRegion &prev_gr,
+                                vector<double> &counts_hist,
+                                size_t &current_count){
+    // check if reads are sorted
+    if (curr_gr.same_chrom(prev_gr) &&
+        curr_gr.get_start() < prev_gr.get_start()
+        && curr_gr.get_end() < prev_gr.get_end()){
+        return false;
+    }
+    if (!curr_gr.same_chrom(prev_gr) ||
+        curr_gr.get_start() != prev_gr.get_start() ||
+        curr_gr.get_end() != prev_gr.get_end())
+        // next read is new, update counts_hist to include current_count
+    {
+        // histogram is too small, resize
+        if(counts_hist.size() < current_count + 1)
+            counts_hist.resize(current_count + 1, 0.0);
+        ++counts_hist[current_count];
+        current_count = 1;
+    }
+    else // next read is same, update current_count
+        ++current_count;
+    
+    return true;
+}
+
 
 /*
  * This code is used to deal with read data in BAM format.
  */
-#ifdef HAVE_BAMTOOLS
-#include "api/BamReader.h"
-#include "api/BamAlignment.h"
+#ifdef HAVE_SAMTOOLS
+// switching dependency on bamtools to samtools
+#include <SAM.hpp>
 
-using BamTools::BamAlignment;
-using BamTools::SamHeader;
-using BamTools::RefVector;
-using BamTools::BamReader;
-using BamTools::RefData;
 
-static SimpleGenomicRegion
-BamToSimpleGenomicRegion(const unordered_map<size_t, string> &chrom_lookup,
-		   const BamAlignment &ba) {
-  const unordered_map<size_t, string>::const_iterator
-    the_chrom(chrom_lookup.find(ba.RefID));
-  if (the_chrom == chrom_lookup.end())
-    throw SMITHLABException("no chrom with id: " + toa(ba.RefID));
+const string mapper = "general";
 
-  const string chrom = the_chrom->second;
-  const size_t start = ba.Position;
-  const size_t end = start + ba.Length;
 
-  return SimpleGenomicRegion(chrom, start, end);
-}
-
-static GenomicRegion
-BamToGenomicRegion(const unordered_map<size_t, string> &chrom_lookup,
-		   const BamAlignment &ba){
-
-  const unordered_map<size_t, string>::const_iterator
-    the_chrom(chrom_lookup.find(ba.RefID));
-  if (the_chrom == chrom_lookup.end())
-    throw SMITHLABException("no chrom with id: " + toa(ba.RefID));
-  const string chrom = the_chrom->second;
-  const size_t start = ba.Position;
-  const size_t end = ba.Position + ba.InsertSize;
-
-  return GenomicRegion(chrom, start, end);
-
+static void
+update_se_duplicate_counts_hist(const MappedRead &curr_mr,
+                                const MappedRead &prev_mr,
+                                const string input_file_name,
+                                vector<double> &counts_hist,
+                                size_t &current_count){
+    // check if reads are sorted
+    if (curr_mr.r.same_chrom(prev_mr.r) &&
+        curr_mr.r.get_start() < prev_mr.r.get_start())
+        throw SMITHLABException("locations unsorted in: " + input_file_name);
+    
+    if (!curr_mr.r.same_chrom(prev_mr.r) ||
+        curr_mr.r.get_start() != prev_mr.r.get_start())
+        // next read is new, update counts_hist to include current_count
+    {
+        // histogram is too small, resize
+        if(counts_hist.size() < current_count + 1)
+            counts_hist.resize(current_count + 1, 0.0);
+        ++counts_hist[current_count];
+        current_count = 1;
+    }
+    else // next read is same, update current_count
+        ++current_count;
 }
 
 
 static size_t
-load_values_BAM_se(const string &input_file_name, vector<double> &values) {
-
-  BamReader reader;
-  reader.Open(input_file_name);
-
-  // Get header and reference
-  string header = reader.GetHeaderText();
-  RefVector refs = reader.GetReferenceData();
-
-  unordered_map<size_t, string> chrom_lookup;
-  for (size_t i = 0; i < refs.size(); ++i)
-    chrom_lookup[i] = refs[i].RefName;
-
-  size_t n_reads = 1;
-  values.push_back(1.0);
-
-  SimpleGenomicRegion prev;
-  BamAlignment bam;
-  while (reader.GetNextAlignment(bam)) {
-    // ignore unmapped reads & secondary alignments
-    if(bam.IsMapped() && bam.IsPrimaryAlignment()){ 
-     //only count unpaired reads or the left mate of paired reads
-      if(!(bam.IsPaired()) || 
-	 (bam.IsFirstMate())){
-
-	SimpleGenomicRegion r(BamToSimpleGenomicRegion(chrom_lookup, bam));
-	if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-	  throw SMITHLABException("locations unsorted in: " + input_file_name);
+load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
     
-	if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-	  values.push_back(1.0);
-	else values.back()++;
-	++n_reads;
-	prev.swap(r);
-      }
+    SAMReader sam_reader(input_file_name, mapper);
+    if(!(sam_reader.is_good()))
+        throw SMITHLABException("problem opening input file " + input_file_name);
+    
+    SAMRecord samr;
+    sam_reader >> samr;
+    size_t n_reads = 1;
+    // resize vals_hist, make sure it starts out empty
+    counts_hist.clear();
+    counts_hist.resize(2, 0.0);
+    size_t current_count = 1;
+    
+    MappedRead prev_mr, curr_mr;
+    prev_mr = samr.mr;
+    
+    while (sam_reader >> samr, sam_reader.is_good())
+    {
+        if(samr.is_primary && samr.is_mapped)
+            // only convert mapped and primary reads
+        {
+            // ignore unmapped reads & secondary alignments
+            if(!(samr.is_mapping_paired) ||
+               (samr.is_mapping_paired && samr.is_Trich)){
+                //only count unpaired reads or the left mate of paired reads
+                
+                curr_mr = samr.mr;
+                update_se_duplicate_counts_hist(curr_mr, prev_mr, input_file_name,
+                                                counts_hist, current_count);
+                
+                // update number of reads and prev read
+                ++n_reads;
+                prev_mr = samr.mr;
+            }
+        }
     }
-  }
-  reader.Close();
-
-  return n_reads;
+    
+    // to account for the last read compared to the one before it.
+    if(counts_hist.size() < current_count + 1)
+        counts_hist.resize(current_count + 1, 0.0);
+    ++counts_hist[current_count];
+    
+    return n_reads;
 }
+
+/********Below are functions for merging pair-end reads********/
+
+static void
+merge_mates(const size_t suffix_len, const size_t range,
+            const GenomicRegion &one, const GenomicRegion &two,
+            GenomicRegion &merged, int &len) {
+    
+    assert(one.same_chrom(two));
+    const size_t read_start = min(one.get_start(), two.get_start());
+    const size_t read_end = max(one.get_end(), two.get_end());
+    
+    len = read_end - read_start;
+    
+    if(len < 0){
+        cerr << one << endl;
+        cerr << two << endl;
+        throw SMITHLABException("error merging reads");
+    }
+    
+    merged = one;
+    merged.set_start(read_start);
+    merged.set_end(read_end);
+    merged.set_score(one.get_score() + two.get_score());
+    
+    const string name(one.get_name());
+    merged.set_name("FRAG:" + name.substr(0, name.size() - suffix_len));
+    
+}
+
+// check if reads have same name & chrom
+inline static bool
+same_read(const size_t suffix_len, 
+	  const MappedRead &a, const MappedRead &b) {
+  const string sa(a.r.get_name());
+  const string sb(b.r.get_name());
+  return (std::equal(sa.begin(), sa.end() - suffix_len, sb.begin())
+	  && a.r.same_chrom(b.r));
+}
+
+
+/////comparison function for priority queue/////////////////
+
+/**************** FOR CLARITY BELOW WHEN COMPARING READS *************/
+static inline bool
+chrom_greater(const GenomicRegion &a, const GenomicRegion &b) {
+    return a.get_chrom() > b.get_chrom();
+}
+static inline bool
+same_start(const GenomicRegion &a, const GenomicRegion &b) {
+    return a.get_start() == b.get_start();
+}
+static inline bool
+start_greater(const GenomicRegion &a, const GenomicRegion &b) {
+    return a.get_start() > b.get_start();
+}
+static inline bool
+end_greater(const GenomicRegion &a, const GenomicRegion &b) {
+    return a.get_end() > b.get_end();
+}
+/******************************************************************************/
+
+
+struct GenomicRegionOrderChecker {
+    bool operator()(const GenomicRegion &prev, const GenomicRegion &gr) const {
+        return start_check(prev, gr);
+    }
+    static bool
+    is_ready(const priority_queue<GenomicRegion, vector<GenomicRegion>, GenomicRegionOrderChecker> &pq,
+             const GenomicRegion &gr, const size_t max_width) {
+        return !pq.top().same_chrom(gr) || pq.top().get_end() + max_width < gr.get_start();
+    }
+    static bool
+    start_check(const GenomicRegion &prev, const GenomicRegion &gr) {
+        return (chrom_greater(prev, gr)
+                || (prev.same_chrom(gr) && start_greater(prev, gr))
+                || (prev.same_chrom(gr) && same_start(prev, gr) && end_greater(prev, gr)));
+    }
+};
+
+
+
+static void empty_pq(GenomicRegion &curr_gr, GenomicRegion &prev_gr,
+                     size_t &current_count, vector<double> &counts_hist,
+                     priority_queue<GenomicRegion, vector<GenomicRegion>,
+                                    GenomicRegionOrderChecker> &read_pq,
+                     const string &input_file_name ){
+    
+    curr_gr = read_pq.top();
+    //	       cerr << "outputting from queue : " << read_pq.top() << endl;
+    read_pq.pop();
+    
+    //update counts hist
+    bool UPDATE_SUCCESS
+    = update_pe_duplicate_counts_hist(curr_gr, prev_gr, counts_hist,
+                                      current_count);
+    if(!UPDATE_SUCCESS){
+        //cerr << "prev = " << prev_gr << endl;
+        //cerr << "curr = " << curr_gr << endl;
+        //cerr << "priority queue : " << endl;
+        //while(	 !(read_pq.empty()) ){
+          //  cerr << read_pq.top() << endl;
+          //  read_pq.pop();
+        //}
+        throw SMITHLABException("reads unsorted in " + input_file_name);
+    }
+    prev_gr = curr_gr;
+}
+
+
 
 static size_t
-load_values_BAM_pe(const string &input_file_name, vector<double> &values) {
-
-  BamReader reader;
-  reader.Open(input_file_name);
-
-  // Get header and reference
-  string header = reader.GetHeaderText();
-  RefVector refs = reader.GetReferenceData();
-
-  unordered_map<size_t, string> chrom_lookup;
-  for (size_t i = 0; i < refs.size(); ++i)
-    chrom_lookup[i] = refs[i].RefName;
-
-  size_t n_reads = 1;
-  values.push_back(1.0);
-
-  GenomicRegion prev;
-  BamAlignment bam;
-  while (reader.GetNextAlignment(bam)) {
-    // ignore unmapped reads & secondary alignments
-    if(bam.IsMapped() && bam.IsPrimaryAlignment()){ 
-      // ignore reads that do not map concoordantly
-      if(bam.IsPaired() && bam.IsProperPair() && bam.IsFirstMate()){
-	GenomicRegion r(BamToGenomicRegion(chrom_lookup, bam));
-	if (r.same_chrom(prev) && r.get_start() < prev.get_start()
-	    && r.get_end() < prev.get_end())
-	    throw SMITHLABException("locations unsorted in: " + input_file_name);
+load_counts_BAM_pe(const bool VERBOSE,
+                   const string &input_file_name,
+                   const size_t MAX_SEGMENT_LENGTH,
+                   const size_t MAX_READS_TO_HOLD,
+                   vector<double> &counts_hist) {
     
-	if (!r.same_chrom(prev) || r.get_start() != prev.get_start()
-	    || r.get_end() != prev.get_end())
-	  values.push_back(1.0);
-	else values.back()++;
-	++n_reads;
-	prev.swap(r);
+    SAMReader sam_reader(input_file_name, mapper);
+    // check sam_reader
+    if(!(sam_reader.is_good()))
+        throw SMITHLABException("problem opening input file " + input_file_name);
+    
+    SAMRecord samr;
+    size_t n_reads = 0;
+    // resize vals_hist, make sure it starts out empty
+    counts_hist.clear();
+    counts_hist.resize(2, 0.0);
+    size_t current_count = 1;
+    size_t suffix_len = 0;
+    size_t n_merged = 0;
+    size_t n_unpaired = 0;
+    
+    GenomicRegion curr_gr, prev_gr;
+    
+    std::priority_queue<GenomicRegion, vector<GenomicRegion>,
+    GenomicRegionOrderChecker> read_pq;
+    
+    unordered_map<string, SAMRecord> dangling_mates;
+    
+    while ((sam_reader >> samr, sam_reader.is_good()))
+    {
+      if(samr.is_primary && samr.is_mapped){
+	// only convert mapped and primary reads
+	if (samr.is_mapping_paired){
+	  const string read_name
+	    = samr.mr.r.get_name().substr(0, samr.mr.r.get_name().size() - suffix_len);
+                
+	  if (dangling_mates.find(read_name) != dangling_mates.end()){
+	    // other end is in dangling mates, merge the two mates
+	    if(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr)){
+	      if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+                    
+	      GenomicRegion merged;
+	      int len = 0;
+	      merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			  dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
+	    // merge success!
+	      if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
+	      // first iteration
+		if(n_reads == 0){
+		  prev_gr = merged;
+		  ++n_reads;
+		  ++n_merged;
+		}
+		else{
+		  ++n_reads;
+		  ++n_merged;
+		  read_pq.push(merged);
+                            
+		  if(!(read_pq.empty()) &&
+		     GenomicRegionOrderChecker::is_ready(read_pq, merged, MAX_SEGMENT_LENGTH)) {
+		  //begin emptying priority queue
+		    while(!(read_pq.empty()) &&
+			  GenomicRegionOrderChecker::is_ready(read_pq, merged,
+							      MAX_SEGMENT_LENGTH) ){
+		      empty_pq(curr_gr, prev_gr, current_count,
+			       counts_hist, read_pq, input_file_name);
+		    }//end while loop
+		  }//end statement for emptying priority queue
+		}
+		dangling_mates.erase(read_name);
+	     
+
+	      }//end if statement for if merge is successful
+	      else{
+		cerr << "problem with read " << read_name << endl;
+
+		throw SMITHLABException("merge unsuccessful");
+	      }
+	    }
+	    else{
+	      // problem mergin reads from "different" chrom like chr1 & chr1_gl000191_random
+	      // flagged as proper pair, but not
+	      read_pq.push(samr.mr.r);
+	      read_pq.push(dangling_mates[read_name].mr.r);
+	    }
+	  }//end if statement for if read is in dangling mates
+	  else{	// other end not in dangling mates, add this read to dangling mates.
+	    dangling_mates[read_name] = samr;
+	  }
+	}
+	else{ // read is unpaired, put in queue
+	  if(n_reads == 0){
+	    ++n_reads;
+	    ++n_unpaired;
+	    prev_gr = samr.mr.r;
+	  }
+	  else{ 
+	    ++n_reads;
+	    ++n_unpaired;
+	    read_pq.push(samr.mr.r);
+ 
+	    if(!(read_pq.empty()) &&
+	       GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r, MAX_SEGMENT_LENGTH)) {
+	     
+	      while(!(read_pq.empty()) &&
+		    GenomicRegionOrderChecker::is_ready(read_pq, samr.mr.r,
+							MAX_SEGMENT_LENGTH) ){
+                              
+		empty_pq(curr_gr, prev_gr, current_count,
+			 counts_hist, read_pq, input_file_name);
+	      }
+                    
+	    }
+                
+	  }
+
+	} 
+            
+	// dangling mates is too large, flush dangling_mates of reads
+	// on different chroms and too far away
+	if (dangling_mates.size() > MAX_READS_TO_HOLD){
+	  if(VERBOSE)
+	    cerr << "dangling mates too large, emptying" << endl;
+                
+	  unordered_map<string, SAMRecord> tmp;
+	  for (unordered_map<string, SAMRecord>::iterator
+		 itr = dangling_mates.begin();
+	       itr != dangling_mates.end(); ++itr)
+	    if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
+		|| (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
+		    && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
+		    samr.mr.r.get_start())) 
+	      {
+		if(itr->second.seg_len >= 0)
+		  read_pq.push(itr->second.mr.r);
+	      }
+	    else
+	      tmp[itr->first] = itr->second;
+                
+	  std::swap(tmp, dangling_mates);
+	}
+            
       }
     }
-  }
-  reader.Close();
-  return n_reads;
+    
+    // empty dangling mates of any excess reads
+    while (!dangling_mates.empty()) {
+      read_pq.push(dangling_mates.begin()->second.mr.r);
+      dangling_mates.erase(dangling_mates.begin());
+    }
+  
+    //final iteration
+    while(!read_pq.empty()){
+      empty_pq(curr_gr, prev_gr, current_count,
+	       counts_hist, read_pq, input_file_name);
+    }
+    
+    if(counts_hist.size() < current_count + 1)
+      counts_hist.resize(current_count + 1, 0.0);
+
+    ++counts_hist[current_count];
+
+    assert((read_pq.empty()));
+    
+    return n_reads;
 }
+
 #endif
 
 
-static size_t
-load_values_BED_se(const string input_file_name, vector<double> &values) {
+/*
+ this code is for BED file input
+ */
 
- std::ifstream in(input_file_name.c_str());
- if (!in)
-   throw "problem opening file: " + input_file_name;
-
- SimpleGenomicRegion r, prev;
- if (!(in >> prev))
-   throw "problem reading from: " + input_file_name;
-
- size_t n_reads = 1;
- values.push_back(1.0);
- while (in >> r) {
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
+static void
+update_se_duplicate_counts_hist(const GenomicRegion &curr_gr,
+                                const GenomicRegion &prev_gr,
+                                const string input_file_name,
+                                vector<double> &counts_hist,
+                                size_t &current_count){
+    // check if reads are sorted
+    if (curr_gr.same_chrom(prev_gr) &&
+        curr_gr.get_start() < prev_gr.get_start())
+        throw SMITHLABException("locations unsorted in: " + input_file_name);
     
-   if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-     values.push_back(1.0);
-   else values.back()++;
-   ++n_reads;
-   prev.swap(r);
- }
- return n_reads;
-}
-
-static size_t
-load_values_BED_pe(const string input_file_name, vector<double> &values) {
-
- std::ifstream in(input_file_name.c_str());
- if (!in)
-   throw "problem opening file: " + input_file_name;
-
- GenomicRegion r, prev;
- if (!(in >> prev))
-   throw "problem reading from: " + input_file_name;
-
- size_t n_reads = 1;
- values.push_back(1.0);
- while (in >> r) {
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start() 
-	&& r.get_end() < prev.get_end())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-    if (!r.same_chrom(prev) || r.get_start() != prev.get_start() 
-	|| r.get_end() != prev.get_end())
-     values.push_back(1.0);
-   else values.back()++;
-   ++n_reads;
-   prev.swap(r);
- }
- return n_reads;
-}
-
-
-static size_t
-load_values(const string input_file_name, vector<double> &values) {
-
-  std::ifstream in(input_file_name.c_str());
-  if (!in)
-    throw SMITHLABException("problem opening file: " + input_file_name);
-
-  vector<double> full_values;
-  size_t n_reads = 0;
-  static const size_t buffer_size = 10000; // Magic!
-  while(!in.eof()){
-    char buffer[buffer_size];
-    in.getline(buffer, buffer_size);
-    full_values.push_back(atof(buffer));
-    if(full_values.back() <= 0.0){
-      cerr << "INVALID INPUT\t" << buffer << endl;
-      throw SMITHLABException("ERROR IN INPUT");
+    if (!curr_gr.same_chrom(prev_gr) ||
+        curr_gr.get_start() != prev_gr.get_start())
+        // next read is new, update counts_hist to include current_count
+    {
+        // histogram is too small, resize
+        if(counts_hist.size() < current_count + 1)
+            counts_hist.resize(current_count + 1, 0.0);
+        ++counts_hist[current_count];
+        current_count = 1;
     }
-    ++n_reads;
-    in.peek();
-  }
-  in.close();
-  if(full_values.back() == 0)
-    full_values.pop_back();
+    else // next read is same, update current_count
+        ++current_count;
+}
 
-  values.swap(full_values);
-  return n_reads;
+static size_t
+load_counts_BED_se(const string input_file_name, vector<double> &counts_hist) {
+    // resize vals_hist
+    counts_hist.clear();
+    counts_hist.resize(2, 0.0);
+    
+    std::ifstream in(input_file_name.c_str());
+    if (!in)
+        throw SMITHLABException("problem opening file: " + input_file_name);
+    
+    GenomicRegion curr_gr, prev_gr;
+    if (!(in >> prev_gr))
+        throw SMITHLABException("problem opening file: " + input_file_name);
+    
+    size_t n_reads = 1;
+    size_t current_count = 1;
+    
+    while (in >> curr_gr) {
+        update_se_duplicate_counts_hist(curr_gr, prev_gr, input_file_name,
+                                        counts_hist, current_count);
+        ++n_reads;
+        prev_gr.swap(curr_gr);
+    }
+    
+    
+    // to account for the last read compared to the one before it.
+    if(counts_hist.size() < current_count + 1)
+        counts_hist.resize(current_count + 1, 0.0);
+    ++counts_hist[current_count];
+    
+    return n_reads;
 }
 
 
+static size_t
+load_counts_BED_pe(const string input_file_name, vector<double> &counts_hist) {
+    
+    // resize vals_hist
+    counts_hist.clear();
+    counts_hist.resize(2, 0.0);
+    
+    std::ifstream in(input_file_name.c_str());
+    if (!in)
+        throw SMITHLABException("problem opening file: " + input_file_name);
+    
+    GenomicRegion curr_gr, prev_gr;
+    if (!(in >> prev_gr))
+        throw SMITHLABException("problem opening file: " + input_file_name);
+    
+    size_t n_reads = 1;
+    size_t current_count = 1;
+    
+    //read in file and compare each gr with the one before it
+    while (in >> curr_gr) {
+        bool UPDATE_SUCCESS =
+        update_pe_duplicate_counts_hist(curr_gr, prev_gr,
+                                        counts_hist, current_count);
+        if(!UPDATE_SUCCESS){
+           // cerr << "prev = " << prev_gr << endl;
+           // cerr << "curr = " << curr_gr << endl;
+            throw SMITHLABException("reads unsorted in " + input_file_name);
+        }
+        
+        ++n_reads;
+        prev_gr.swap(curr_gr);
+    }
+    
+    if(counts_hist.size() < current_count + 1)
+        counts_hist.resize(current_count + 1, 0.0);
+    
+    // to account for the last read compared to the one before it.
+    ++counts_hist[current_count];
+    
+    
+    return n_reads;
+    
+    
+}
+
+/*
+ text file input
+ */
+
+static size_t
+load_counts(const string input_file_name, vector<double> &counts_hist) {
+    
+    std::ifstream in(input_file_name.c_str());
+    if (!in) // if file doesn't open
+        throw SMITHLABException("problem opening file: " + input_file_name);
+    
+    size_t n_reads = 0;
+    while(!in.eof()){
+        string buffer;
+        getline(in, buffer);
+        
+        std::istringstream iss(buffer);
+        if(iss.good()){
+            double val;
+            iss >> val;
+            if(val > 0) {
+                const size_t count = static_cast<size_t>(val);
+                // histogram is too small, resize
+                if(counts_hist.size() < count + 1)
+                    counts_hist.resize(count + 1, 0.0);
+                ++counts_hist[count];
+                n_reads += count;
+            }
+            else if(val != 0)
+                throw SMITHLABException("problem reading file at line " + (n_reads + 1));
+        }
+        in.peek();
+    }
+    in.close();
+    
+    return n_reads;
+}
+
+//returns number of reads from file containing counts histogram
+static size_t
+load_histogram(const string &filename, vector<double> &counts_hist) {
+    
+    counts_hist.clear();
+    
+    std::ifstream in(filename.c_str());
+    if (!in) //if file doesn't open
+        throw SMITHLABException("could not open histogram: " + filename);
+    
+    size_t n_reads = 0;
+    size_t line_count = 0ul, prev_read_count = 0ul;
+    string buffer;
+    while (getline(in, buffer)) {
+        ++line_count;
+        size_t read_count = 0ul;
+        double frequency = 0.0;
+        std::istringstream is(buffer);
+        // error reading input
+        if (!(is >> read_count >> frequency))
+            throw SMITHLABException("bad histogram line format:\n" +
+                                    buffer + "\n(line " + toa(line_count) + ")");
+        // histogram is out of order
+        if (read_count < prev_read_count)
+            throw SMITHLABException("bad line order in file " +
+                                    filename + "\n(line " +
+                                    toa(line_count) + ")");
+        counts_hist.resize(read_count + 1, 0.0);
+        counts_hist[read_count] = frequency;
+        prev_read_count = read_count;
+        n_reads += static_cast<size_t>(read_count*frequency);
+    }
+    
+    return n_reads;
+}
+
+
+// vals_hist[j] = n_{j} = # (counts = j)
+// vals_hist_distinct_counts[k] = kth index j s.t. vals_hist[j] > 0
+// stores kth index of vals_hist that is positive
+// distinct_counts_hist[k] = vals_hist[vals_hist_distinct_counts[k]]
+// stores the kth positive value of vals_hist
 void
-resample_hist(const gsl_rng *rng, const vector<double> &vals_hist,
-	      const double total_sampled_reads,
-	      double expected_sample_size,
-	      vector<double> &sample_hist) {
-  
-  const size_t hist_size = vals_hist.size();
-  const double vals_mean = total_sampled_reads/expected_sample_size;
-  
-  sample_hist = vector<double>(hist_size, 0.0);
-  vector<unsigned int> curr_sample(hist_size);
-  double remaining = total_sampled_reads;
-  
-  while (remaining > 0) {
+resample_hist(const gsl_rng *rng, const vector<size_t> &vals_hist_distinct_counts,
+              const vector<double> &distinct_counts_hist,
+              vector<double> &out_hist) {
     
-    // get a new sample
-    expected_sample_size = max(1.0, (remaining/vals_mean)/2.0);
-    gsl_ran_multinomial(rng, hist_size, expected_sample_size,
-			&vals_hist.front(), &curr_sample.front());
+    vector<unsigned int> sample_distinct_counts_hist(distinct_counts_hist.size(), 0);
     
-    // see how much we got
-    double inc = 0.0;
-    for (size_t i = 0; i < hist_size; ++i)
-      inc += i*curr_sample[i];
+    const unsigned int distinct =
+    static_cast<unsigned int>(accumulate(distinct_counts_hist.begin(),
+                                         distinct_counts_hist.end(), 0.0));
     
-    // only add to histogram if sampled reads < remaining reads
-    if (inc <= remaining) {
-      for (size_t i = 0; i < hist_size; i++)
-	sample_hist[i] += static_cast<double>(curr_sample[i]);
-      // update the amount we still need to get
-      remaining -= inc;
-    }
-  }
+    gsl_ran_multinomial(rng, distinct_counts_hist.size(), distinct,
+                        &distinct_counts_hist.front(),
+                        &sample_distinct_counts_hist.front());
+    
+    out_hist.clear();
+    out_hist.resize(vals_hist_distinct_counts.back() + 1, 0.0);
+    for(size_t i = 0; i < sample_distinct_counts_hist.size(); i++)
+        out_hist[vals_hist_distinct_counts[i]] =
+        static_cast<double>(sample_distinct_counts_hist[i]);
 }
+
+// sample umis without replacement to interpolate complexity
+static double
+sample_count_singletons(const gsl_rng *rng,
+			const vector<size_t> &full_umis,
+			const size_t sample_size) {
+    vector<size_t> sample_umis(sample_size);
+    gsl_ran_choose(rng, (size_t *)&sample_umis.front(), sample_size,
+                   (size_t *)&full_umis.front(), full_umis.size(),
+                   sizeof(size_t));
+    double n_singletons = 0.0;
+    if(sample_umis[1] != sample_umis[0])
+      ++n_singletons;
+    for (size_t i = 2; i < sample_umis.size(); i++)
+      if((sample_umis[i] != sample_umis[i-1])
+	 && (sample_umis[i-2] != sample_umis[i-1]))
+            ++n_singletons;
+    
+    return n_singletons;
+}
+
 
 static inline bool
 check_saturation_estimates(const vector<double> estimates){
@@ -321,68 +712,97 @@ check_saturation_estimates(const vector<double> estimates){
 }
 
 void
-bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_values,
+bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_hist,
 			   const size_t bootstraps, const size_t orig_max_terms, 
 			   const int diagonal, const double step_size, 
 			   const double max_extrapolation, 
-			   const double max_val, const double val_step, 
 			   vector< vector<double> > &full_estimates){
   full_estimates.clear();
 
-  //setup rng
-  srand(time(0) + getpid());
-  gsl_rng_env_setup();
-  gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
-  gsl_rng_set(rng, rand()); 
-
-  const size_t max_observed_count = 
-    static_cast<size_t>(*std::max_element(orig_values.begin(), 
-					  orig_values.end()));
+    //setup rng
+    srand(time(0) + getpid());
+    gsl_rng_env_setup();
+    gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
+    gsl_rng_set(rng, rand());
     
-  vector<double> orig_hist(max_observed_count + 1, 0.0);
-  for (size_t i = 0; i < orig_values.size(); ++i)
-    ++orig_hist[static_cast<size_t>(orig_values[i])];
-
-
-  const double vals_sum =
-     accumulate(orig_values.begin(), orig_values.end(), 0.0);
+    double vals_sum = 0.0;
+    for(size_t i = 0; i < orig_hist.size(); i++)
+        vals_sum += orig_hist[i]*i;
+    
+    const double initial_distinct = accumulate(orig_hist.begin(), orig_hist.end(), 0.0);
+    
+    
+    vector<size_t> orig_hist_distinct_counts;
+    vector<double> distinct_orig_hist;
+    for(size_t i = 0; i < orig_hist.size(); i++){
+        if(orig_hist[i] > 0){
+            orig_hist_distinct_counts.push_back(i);
+            distinct_orig_hist.push_back(orig_hist[i]);
+        }
+    }
 
   for (size_t iter = 0; 
-       iter < 2*bootstraps && full_estimates.size() < bootstraps; ++iter) {
+       iter < 4*bootstraps && full_estimates.size() < bootstraps; ++iter) {
 
+    vector<double> yield_vector;
     vector<double> hist;
-
-    resample_hist(rng, orig_hist, vals_sum,
-		  static_cast<double>(orig_values.size()),
-		  hist);
-    
-    //resize boot_hist to remove excess zeros
-    while(hist.back() == 0)
+    resample_hist(rng, orig_hist_distinct_counts, distinct_orig_hist, hist);
+        
+    double sample_vals_sum = 0.0;
+    for(size_t i = 0; i < hist.size(); i++)
+      sample_vals_sum += i*hist[i];
+        
+    const double sample_max_val = max_extrapolation/sample_vals_sum;
+    const double sample_val_step = step_size/sample_vals_sum;
+        
+        //resize boot_hist to remove excess zeros
+    while (hist.back() == 0)
       hist.pop_back();
     
-    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+
+      // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
     size_t counts_before_first_zero = 1;
     while (counts_before_first_zero < hist.size() &&
 	   hist[counts_before_first_zero] > 0)
       ++counts_before_first_zero;
-    
+        
     size_t max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
-    // refit curve for lower bound (degree of approx is 1 less than
-    // max_terms)
-    max_terms = max_terms - (max_terms % 2 == 0);
-    
-    //refit curve for lower bound
-    const ContinuedFractionApproximation 
+        // refit curve for lower bound (degree of approx is 1 less than
+        // max_terms)
+    max_terms = max_terms - (max_terms % 2 == 1);
+        
+        //refit curve for lower bound
+    const ContinuedFractionApproximation
       lower_cfa(diagonal, max_terms, step_size, max_extrapolation);
-    
-    const ContinuedFraction 
+        
+    const ContinuedFraction
       lower_cf(lower_cfa.optimal_cont_frac_distinct(hist));
-
+        
     vector<double> saturation_estimates;
     if(lower_cf.is_valid()){
-      lower_cf.extrapolate_yield_deriv(hist, vals_sum,
-				      max_val, val_step,
-				      saturation_estimates);
+
+      //construct umi vector to sample from
+        vector<size_t> umis;
+        size_t umi = 1;
+        for(size_t i = 1; i < hist.size(); i++){
+            for(size_t j = 0; j < hist[i]; j++){
+                for(size_t k = 0; k < i; k++)
+                    umis.push_back(umi);
+                umi++;
+            }
+        }
+        assert(umis.size() == static_cast<size_t>(sample_vals_sum));
+        
+        // interpolate complexity curve by random sampling w/out replacement
+        size_t upper_limit = static_cast<size_t>(sample_vals_sum);
+        size_t step = static_cast<size_t>(step_size);
+        size_t sample = step;
+        while(sample < upper_limit){
+            saturation_estimates.push_back(sample_count_singletons(rng, umis, sample)/sample);
+            sample += step;
+        }
+	lower_cf.extrapolate_yield_deriv(hist, vals_sum, static_cast<double>(sample),
+					 sample_max_val, sample_val_step, saturation_estimates);
 
     }
     else if(VERBOSE)
@@ -397,135 +817,8 @@ bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_values
       cerr << "fail_check" << endl;
 
   }
-  cerr << "deriv estimates size =" << full_estimates.size();
 }
 
-/*
-void
-bootstrap_saturation(const bool VERBOSE, const vector<double> &orig_values,
-		     const size_t bootstraps, const size_t orig_max_terms, 
-		     const int diagonal, const double step_size, 
-		     const double max_extrapolation, 
-		     const double max_val, const double val_step, 
-		     vector< vector<double> > &full_estimates){
-  full_estimates.clear();
-
-  //setup rng
-  srand(time(0) + getpid());
-  gsl_rng_env_setup();
-  gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
-  gsl_rng_set(rng, rand()); 
-
-  const size_t max_observed_count = 
-    static_cast<size_t>(*std::max_element(orig_values.begin(), 
-					  orig_values.end()));
-    
-  vector<double> orig_hist(max_observed_count + 1, 0.0);
-  for (size_t i = 0; i < orig_values.size(); ++i)
-    ++orig_hist[static_cast<size_t>(orig_values[i])];
-
-
-  const double vals_sum =
-     accumulate(orig_values.begin(), orig_values.end(), 0.0);
-
-  for (size_t iter = 0; 
-       iter < 2*bootstraps && full_estimates.size() < bootstraps; ++iter) {
-    
-    //    vector<double> boot_values;
-    //  resample_values(orig_values, rng, orig_values.size(), vals_sum, boot_values);
-    
-    //  const size_t max_observed_count = 
-    //     static_cast<size_t>(*std::max_element(boot_values.begin(), 
-    //					    boot_values.end()));
-    
-    // BUILD THE HISTOGRAM
-    //  vector<double> hist(max_observed_count + 1, 0.0);
-    //  for (size_t i = 0; i < boot_values.size(); ++i)
-    //   ++hist[static_cast<size_t>(boot_values[i])];
-
-    vector<double> hist;
-    resample_hist(rng, orig_hist, vals_sum,
-		  static_cast<double>(orig_values.size()),
-		  hist);
-    
-    //resize boot_hist to remove excess zeros
-    while(hist.back() == 0)
-      hist.pop_back();
-    
-    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
-    size_t counts_before_first_zero = 1;
-    while (counts_before_first_zero < hist.size() &&
-	   hist[counts_before_first_zero] > 0)
-      ++counts_before_first_zero;
-    
-    size_t max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
-    // refit curve for lower bound (degree of approx is 1 less than
-    // max_terms)
-    max_terms = max_terms - (max_terms % 2 == 1);
-    
-    //refit curve for lower bound
-    const ContinuedFractionApproximation 
-      lower_cfa(diagonal, max_terms, step_size, max_extrapolation);
-    
-    const ContinuedFraction 
-      lower_cf(lower_cfa.optimal_cont_frac_satur(hist));
-
-    vector<double> saturation_estimates;
-    if(lower_cf.is_valid()){
-      lower_cf.extrapolate_saturation(hist, vals_sum,
-				      max_val, val_step,
-				      saturation_estimates);
-      saturation_estimates.insert(saturation_estimates.begin(),
-				  hist[1]/vals_sum);
-    }
-    else if(VERBOSE)
-      cerr << "not_valid" << endl;
-    if(check_saturation_estimates(saturation_estimates)){
-      full_estimates.push_back(saturation_estimates);
-      if(VERBOSE) 
-	cerr << ".";
-    }
-    else if(VERBOSE)
-      cerr << "fail_check" << endl;
-
-  }
-
-  cerr << "cf estimates size = " << full_estimates.size() << endl;
-}
-
-void 
-single_estimates(const bool VERBOSE, const vector<double> &hist,
-		 const double vals_sum,
-		 size_t max_terms, const int diagonal,
-		 const double step_size, const double max_extrapolation,
-		 const double max_val, const double val_step, 
-		 vector<double> &estimates){
-    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
-  size_t counts_before_first_zero = 1;
-  while (counts_before_first_zero < hist.size() &&
-	 hist[counts_before_first_zero] > 0)
-    ++counts_before_first_zero;
-    
-  max_terms = std::min(max_terms, counts_before_first_zero - 1);
-    // refit curve for lower bound (degree of approx is 1 less than
-    // max_terms)
-  max_terms = max_terms - (max_terms % 2 == 0);
-
-  //refit curve for lower bound
-  const ContinuedFractionApproximation 
-    lower_cfa(diagonal, max_terms, step_size, max_extrapolation);
-    
-  const ContinuedFraction 
-    lower_cf(lower_cfa.optimal_cont_frac_yield(hist));
-  if(lower_cf.is_valid())
-    lower_cf.extrapolate_saturation(hist, vals_sum,
-				    max_val, val_step,
-				    estimates);
-  if(!check_saturation_estimates(estimates))
-    cerr << "ESTIMATES UNSTABLE, MORE DATA REQUIRED" << endl; 
-
-}
-*/
 
 static double
 compute_var(const vector<double> &estimates,
@@ -568,64 +861,103 @@ compute_mean_and_alphaCI(const vector< vector<double> > &full_estimates,
 
 }
 
+static double
+GoodToulmin2xExtrap(const vector<double> &counts_hist){
+    double two_fold_extrap = 0.0;
+    for(size_t i = 0; i < counts_hist.size(); i++)
+        two_fold_extrap += pow(-1.0, i + 1)*counts_hist[i];
+    
+    return two_fold_extrap;
+}
+
 
 int
 main(const int argc, const char **argv) {
 
   try {
-    /* FILES */
-    string outfile;
-    
-    size_t orig_max_terms = 200;
-    double max_extrapolation = 1.0e10;
-    double step_size = 1e6;
-    size_t bootstraps = 100;
-    int diagonal = -1;
-    double c_level = 0.95;
-
-    
-    /* FLAGS */
-    bool VERBOSE = false;
-    bool VALS_INPUT = false;
-    bool PAIRED_END = false;
-    
-#ifdef HAVE_BAMTOOLS
-    bool BAM_FORMAT_INPUT = false;
+      const size_t MIN_REQUIRED_COUNTS = 4;
+        
+        /* FILES */
+        string outfile;
+        
+        size_t orig_max_terms = 100;
+        double max_extrapolation = 1.0e10;
+        size_t upper_limit = 0;
+        
+        // AS: this step size issue needs to be addressed
+        double step_size = 1e6;
+        // double read_step_size = 1e7;
+        
+        size_t MAX_SEGMENT_LENGTH = 10000;
+        //size_t max_width = 1000;
+        size_t bootstraps = 100;
+        int diagonal = -1;
+        //size_t bin_size = 20;
+        double c_level = 0.95;
+        //double tolerance = 1e-20;
+        //size_t max_iter = 0;
+        double dupl_level = 0.5;
+        //double reads_per_base = 2.0;
+        //double fixed_fold = 20;
+        
+        /* FLAGS */
+        //size_t MODE = 0;
+        //bool NO_SEQUENCE = false;
+        bool VERBOSE = false;
+        bool VALS_INPUT = false;
+        bool PAIRED_END = false;
+        bool HIST_INPUT = false;
+        bool SINGLE_ESTIMATE = false;
+        
+#ifdef HAVE_SAMTOOLS
+        bool BAM_FORMAT_INPUT = false;
 #endif
     
     /**************** GET COMMAND LINE ARGUMENTS ***********************/
-    OptionParser opt_parse(strip_path(argv[0]), 
-			   "",
-			   "<sorted-bed-file>");
-    opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
-		      false , outfile);
-    opt_parse.add_opt("extrapolation_length",'e',
-		      "maximum extrapolation length "
-		      "(default: " + toa(max_extrapolation) + ")",
-                      false, max_extrapolation);
-    opt_parse.add_opt("step",'s',"step size in extrapolations "
-		      "(default: " + toa(step_size) + ")", 
-		      false, step_size);
-    opt_parse.add_opt("bootstraps",'b',"number of bootstraps "
-		      "(default: " + toa(bootstraps) + "), "
-		      "set to 0 or 1 for single estimate",
-		      false, bootstraps);
-    opt_parse.add_opt("c_level", 'c', "level for confidence intervals "
-		      "(default: " + toa(c_level) + ")", false, c_level);
-    //    opt_parse.add_opt("terms",'t',"maximum number of terms", false, 
-    //		      orig_max_terms);
-    opt_parse.add_opt("verbose", 'v', "print more information", 
-		      false, VERBOSE);
-#ifdef HAVE_BAMTOOLS
-    opt_parse.add_opt("bam", 'B', "input is in BAM format", 
-		      false, BAM_FORMAT_INPUT);
+	OptionParser opt_parse(strip_path(argv[1]),
+			       "", "<sorted-bed-file>");
+	opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
+			  false , outfile);
+	opt_parse.add_opt("extrap",'e',"maximum extrapolation "
+			  "(default: " + toa(max_extrapolation) + ")",
+			  false, max_extrapolation);
+	opt_parse.add_opt("step",'s',"step size in extrapolations "
+			  "(default: " + toa(step_size) + ")",
+			  false, step_size);
+	opt_parse.add_opt("bootstraps",'b',"number of bootstraps "
+			  "(default: " + toa(bootstraps) + "), ",
+			  false, bootstraps);
+	opt_parse.add_opt("cval", 'c', "level for confidence intervals "
+			  "(default: " + toa(c_level) + ")", false, c_level);
+	opt_parse.add_opt("dupl_level",'d', "fraction of duplicate to predict "
+			  "(default: " + toa(dupl_level) + ")",
+			  false, dupl_level);
+	opt_parse.add_opt("terms",'x',"maximum number of terms", false,
+			  orig_max_terms);
+            //    opt_parse.add_opt("tol",'t', "numerical tolerance", false, tolerance);
+            //    opt_parse.add_opt("max_iter",'i', "maximum number of iteration",
+            //		      false, max_iter);
+	opt_parse.add_opt("verbose", 'v', "print more information",
+			  false, VERBOSE);
+#ifdef HAVE_SAMTOOLS
+	opt_parse.add_opt("bam", 'B', "input is in BAM format",
+			  false, BAM_FORMAT_INPUT);
+	opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
+			  "paired end bam reads (default: " 
+			  + toa(MAX_SEGMENT_LENGTH) + ")", 
+			  false, MAX_SEGMENT_LENGTH);
 #endif
-    opt_parse.add_opt("pe", 'P', "input is paired end read file",
-		      false, PAIRED_END);
-    opt_parse.add_opt("vals", 'V', 
-		      "input is a text file containing only the observed counts",
-		      false, VALS_INPUT);
-
+	opt_parse.add_opt("pe", 'P', "input is paired end read file",
+			  false, PAIRED_END);
+	opt_parse.add_opt("vals", 'V',
+			  "input is a text file containing only the observed counts",
+			  false, VALS_INPUT);
+	opt_parse.add_opt("hist", 'H',
+			  "input is a text file containing the observed histogram",
+			  false, HIST_INPUT);
+	opt_parse.add_opt("quick",'Q',
+			  "quick mode, estimate yield without bootstrapping for confidence intervals",
+			  false, SINGLE_ESTIMATE);
     vector<string> leftover_args;
     opt_parse.parse(argc, argv, leftover_args);
     if (argc == 1 || opt_parse.help_requested()) {
@@ -647,64 +979,115 @@ main(const int argc, const char **argv) {
     const string input_file_name = leftover_args.front();
     /******************************************************************/
     
-    // READ IN THE DATA
-    vector<double> values;
-    if(VALS_INPUT)
-      load_values(input_file_name, values);
-#ifdef HAVE_BAMTOOLS
-    else if (BAM_FORMAT_INPUT && PAIRED_END)
-      load_values_BAM_pe(input_file_name, values);
-    else if(BAM_FORMAT_INPUT)
-      load_values_BAM_se(input_file_name, values);
+     
+    vector<double> counts_hist;
+    size_t n_reads = 0;
+    
+    // LOAD VALUES
+    if(HIST_INPUT){
+        if(VERBOSE)
+            cerr << "INPUT_HIST" << endl;
+        n_reads = load_histogram(input_file_name, counts_hist);
+    }
+    else if(VALS_INPUT){
+        if(VERBOSE)
+            cerr << "VALS_INPUT" << endl;
+        n_reads = load_counts(input_file_name, counts_hist);
+    }
+#ifdef HAVE_SAMTOOLS
+    else if (BAM_FORMAT_INPUT && PAIRED_END){
+        if(VERBOSE)
+            cerr << "PAIRED_END_BAM_INPUT" << endl;
+        const size_t MAX_READS_TO_HOLD = 100000;
+        n_reads = load_counts_BAM_pe(VERBOSE, input_file_name, MAX_SEGMENT_LENGTH,
+                                     MAX_READS_TO_HOLD, counts_hist);
+    }
+    else if(BAM_FORMAT_INPUT){
+        if(VERBOSE)
+            cerr << "BAM_INPUT" << endl;
+        n_reads = load_counts_BAM_se(input_file_name, counts_hist);
+    }
 #endif
-    else if(PAIRED_END)
-      load_values_BED_pe(input_file_name, values);  
-    else
-      load_values_BED_se(input_file_name, values);
-
-    const double vals_sum = accumulate(values.begin(), values.end(), 0.0);
+    else if(PAIRED_END){
+        if(VERBOSE)
+            cerr << "PAIRED_END_BED_INPUT" << endl;
+        n_reads = load_counts_BED_pe(input_file_name, counts_hist);
+    }
+    else{ // default is single end bed file
+        if(VERBOSE)
+            cerr << "BED_INPUT" << endl;
+        n_reads = load_counts_BED_se(input_file_name, counts_hist);
+    }
     
-    const double max_val = max_extrapolation/vals_sum;
-    const double val_step = step_size/vals_sum;
+    const size_t max_observed_count = counts_hist.size() - 1;
+    const double distinct_reads = accumulate(counts_hist.begin(),
+                                             counts_hist.end(), 0.0);
     
-    const size_t max_observed_count = 
-      static_cast<size_t>(*std::max_element(values.begin(), values.end()));
-
-    // catch if all reads are distinct
-    if(max_observed_count < 8)
-      throw SMITHLABException("sample not sufficiently distinct, unable to estimate");
-    
-    // BUILD THE HISTOGRAM
-    vector<double> counts_hist(max_observed_count + 1, 0.0);
-    for (size_t i = 0; i < values.size(); ++i)
-      ++counts_hist[static_cast<size_t>(values[i])];
-    
-    if (VERBOSE)
-      cerr << "TOTAL READS     = " << vals_sum << endl
-	   << "DISTINCT READS  = " << values.size() << endl
-	   << "MAX COUNT       = " << max_observed_count << endl
-	   << "COUNTS OF 1     = " << counts_hist[1] << endl
-	   << "MAX TERMS       = " << orig_max_terms << endl;
-    
-    if (VERBOSE) {
-      // OUTPUT THE ORIGINAL HISTOGRAM
-      cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
-      for(size_t i = 0; i < counts_hist.size(); i++)
-	if(counts_hist[i] > 0)
-	  cerr << i << '\t' << counts_hist[i] << endl;
-      cerr << endl;
+    // for large initial experiments need to adjust step size
+    // otherwise small relative steps do not account for variance
+    // in extrapolation
+    if(step_size < (n_reads/20)){
+        step_size = std::max(step_size, step_size*round(n_reads/(20*step_size)));
+        if(VERBOSE)
+            cerr << "ADJUSTED_STEP_SIZE = " << step_size << endl;
     }
 
-    bool BOOTSTRAP = (bootstraps > 10);
-    if(BOOTSTRAP){
-      if(VERBOSE)
-	cerr << "[BOOTSTRAP ESTIMATES]" << endl;
+    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+    size_t counts_before_first_zero = 1;
+    while (counts_before_first_zero < counts_hist.size() &&
+           counts_hist[counts_before_first_zero] > 0)
+        ++counts_before_first_zero;
+
+    orig_max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
+    orig_max_terms = orig_max_terms - (orig_max_terms % 2 == 1);
+        
+    
+    const size_t distinct_counts =
+    static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
+                                      bind2nd(std::greater<double>(), 0.0)));
+    if (VERBOSE)
+        cerr << "TOTAL READS     = " << n_reads << endl
+	     << "DISTINCT READS  = " << distinct_reads << endl
+	     << "DISTINCT COUNTS = " << distinct_counts << endl
+	     << "MAX COUNT       = " << max_observed_count << endl
+	     << "COUNTS OF 1     = " << counts_hist[1] << endl
+	     << "MAX TERMS       = " << orig_max_terms << endl;
+    
+    if (VERBOSE) {
+        // OUTPUT THE ORIGINAL HISTOGRAM
+        cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
+        for (size_t i = 0; i < counts_hist.size(); i++)
+            if (counts_hist[i] > 0)
+                cerr << i << '\t' << static_cast<size_t>(counts_hist[i]) << endl;
+        cerr << endl;
+    }
+    
+    // check to make sure library is not overly saturated
+    const double two_fold_extrap = GoodToulmin2xExtrap(counts_hist);
+    if(two_fold_extrap < 0.0)
+        throw SMITHLABException("Library expected to saturate in doubling of size, unable to extrapolate");
+    
+    
+    size_t total_reads = 0;
+    for(size_t i = 0; i < counts_hist.size(); i++){
+        total_reads += i*counts_hist[i];
+      //  cerr << "total reads " << total_reads << endl;
+    }
+    //assert(total_reads == n_reads);
+    
+    
+    
+    // catch if all reads are distinct or sample sufficiently deep
+    if (max_observed_count < MIN_REQUIRED_COUNTS)
+        throw SMITHLABException("sample not sufficiently deep or duplicates removed");
+
+    if(VERBOSE)
+      cerr << "COMPUTING SATURATION" << endl;
 
       vector< vector<double> > full_deriv_estimates;
-      bootstrap_saturation_deriv(VERBOSE, values,  
+      bootstrap_saturation_deriv(VERBOSE, counts_hist,  
 			   bootstraps, orig_max_terms, diagonal, 
 			   step_size, max_extrapolation, 
-			   max_val, val_step, 
 			   full_deriv_estimates);
 
 
@@ -731,12 +1114,12 @@ main(const int argc, const char **argv) {
 	  << "UPPER_" << 100*c_level << "%CI" << endl;
     
       double val = 0.0;
-      for (size_t i = 0; i < mean_deriv_estimates.size(); ++i, val += val_step)
-	out << (val + 1.0)*vals_sum << '\t' 
+      out << 0 << '\t' << 1.0 << '\t' << 1.0 << '\t' << 1.0 << endl;
+      for (size_t i = 0; i < mean_deriv_estimates.size(); ++i)
+	out << (i + 1)*step_size << '\t' 
 	    << mean_deriv_estimates[i] << '\t'
 	    << lower_alphaCI_deriv[i] << '\t' 
 	    << upper_alphaCI_deriv[i] << endl;
-    }
 
     
 
