@@ -914,7 +914,7 @@ main(const int argc, const char **argv) {
 #endif
     
     /**************** GET COMMAND LINE ARGUMENTS ***********************/
-	OptionParser opt_parse(strip_path(argv[1]),
+	OptionParser opt_parse(strip_path(argv[0]),
 			       "", "<sorted-bed-file>");
 	opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
 			  false , outfile);
