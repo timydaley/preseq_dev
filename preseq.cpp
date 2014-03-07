@@ -187,7 +187,7 @@ load_counts_BAM_se(const string &input_file_name, vector<double> &counts_hist) {
 
 /********Below are functions for merging pair-end reads********/
 
-static void
+static bool
 merge_mates(const size_t suffix_len, const size_t range,
             const GenomicRegion &one, const GenomicRegion &two,
             GenomicRegion &merged, int &len) {
@@ -201,7 +201,7 @@ merge_mates(const size_t suffix_len, const size_t range,
     if(len < 0){
         cerr << one << endl;
         cerr << two << endl;
-        throw SMITHLABException("error merging reads");
+        return false;
     }
     
     merged = one;
@@ -211,7 +211,8 @@ merge_mates(const size_t suffix_len, const size_t range,
     
     const string name(one.get_name());
     merged.set_name("FRAG:" + name.substr(0, name.size() - suffix_len));
-    
+
+    return true;
 }
 
 // check if reads have same name & chrom
@@ -282,13 +283,9 @@ static void empty_pq(GenomicRegion &curr_gr, GenomicRegion &prev_gr,
     = update_pe_duplicate_counts_hist(curr_gr, prev_gr, counts_hist,
                                       current_count);
     if(!UPDATE_SUCCESS){
-        //cerr << "prev = " << prev_gr << endl;
-        //cerr << "curr = " << curr_gr << endl;
-        //cerr << "priority queue : " << endl;
-        //while(	 !(read_pq.empty()) ){
-          //  cerr << read_pq.top() << endl;
-          //  read_pq.pop();
-        //}
+        cerr << "prev = \t" << prev_gr << endl;
+        cerr << "curr = \t" << curr_gr << endl;
+	cerr << "Increase seg_len if in paired end mode" << endl;
         throw SMITHLABException("reads unsorted in " + input_file_name);
     }
     prev_gr = curr_gr;
@@ -340,10 +337,13 @@ load_counts_BAM_pe(const bool VERBOSE,
                     
 	      GenomicRegion merged;
 	      int len = 0;
-	      merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
-			  dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
+	      bool MERGE_SUCCESS =
+		merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			    dangling_mates[read_name].mr.r, samr.mr.r, merged, len);
 	    // merge success!
-	      if (len >= 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
+	      if (MERGE_SUCCESS && 
+		  len >= 0 && 
+		  len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
 	      // first iteration
 		if(n_reads == 0){
 		  prev_gr = merged;

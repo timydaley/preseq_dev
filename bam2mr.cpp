@@ -54,7 +54,7 @@ fill_overlap(const bool pos_str, const MappedRead &mr, const size_t start,
   copy(mr.scr.begin() + a, mr.scr.begin() + b, scr.begin() + offset);
 }
 
-static void
+static bool
 merge_mates(const size_t suffix_len, const size_t range,
             const MappedRead &one, const MappedRead &two,
             MappedRead &merged, int &len) {
@@ -78,6 +78,7 @@ merge_mates(const size_t suffix_len, const size_t range,
   if(len < 0){
     cerr << one << endl;
     cerr << two << endl;
+    return false;
   }
   // assert(len > 0);
   // assert(one_left <= one_right && two_left <= two_right);
@@ -120,6 +121,8 @@ merge_mates(const size_t suffix_len, const size_t range,
   merged.scr = scr;  
   const string name(one.r.get_name());
   merged.r.set_name("FRAG:" + name.substr(0, name.size() - suffix_len));
+
+  return true;
 }
 
 inline static bool
@@ -149,6 +152,7 @@ main(int argc, const char **argv) {
     size_t MAX_SEGMENT_LENGTH = 5000;
     size_t suffix_len = 0;
     bool VERBOSE = false;
+    size_t MAX_READS_TO_HOLD = 1000000;
     
     /****************** COMMAND LINE OPTIONS ********************/
     OptionParser opt_parse(strip_path(argv[0]),
@@ -161,6 +165,8 @@ main(int argc, const char **argv) {
                       false, suffix_len); 
     opt_parse.add_opt("max-frag", 'L', "maximum allowed insert size", 
                       false, MAX_SEGMENT_LENGTH); 
+    opt_parse.add_opt("max_reads", 'R', "maximum number of reads to hold for merging",
+		      false, MAX_READS_TO_HOLD);
     opt_parse.add_opt("verbose", 'v', "print more information",
                       false, VERBOSE);
 
@@ -212,17 +218,23 @@ main(int argc, const char **argv) {
 	  const string read_name
 	    = samr.mr.r.get_name().substr(
 	      0, samr.mr.r.get_name().size() - suffix_len);
+
 	  if (dangling_mates.find(read_name) != dangling_mates.end()){
 	    // other end is in dangling mates, merge the two mates
 	    if(same_read(suffix_len, samr.mr, dangling_mates[read_name].mr)){
 	      if (samr.is_Trich) std::swap(samr, dangling_mates[read_name]);
+
 	      revcomp(samr.mr);
 
 	      MappedRead merged;
 	      int len = 0;
-	      merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
-			  dangling_mates[read_name].mr, samr.mr, merged, len);
-	      if (len > 0 && len <= static_cast<int>(MAX_SEGMENT_LENGTH)) 
+	      bool MERGE_SUCCESS =
+		merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+			    dangling_mates[read_name].mr, samr.mr, merged, len);
+
+	      if (MERGE_SUCCESS && 
+		  len >= 0 && 
+		  len <= static_cast<int>(MAX_SEGMENT_LENGTH)) 
 		out << merged << endl;
 	      else
 		out << dangling_mates[read_name].mr << endl << samr.mr << endl;
@@ -239,7 +251,7 @@ main(int argc, const char **argv) {
 
           // dangling mates is too large, flush dangling_mates of reads
 	  // on different chroms and too far away 
-	  if (dangling_mates.size() > 100000)
+	  if (dangling_mates.size() > MAX_READS_TO_HOLD)
 	  {
 	    //   if(VERBOSE)
 	    //  cerr << "dangling mates too large, emptying" << endl;
