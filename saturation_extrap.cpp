@@ -801,7 +801,8 @@ bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_hist,
             saturation_estimates.push_back(sample_count_singletons(rng, umis, sample)/sample);
             sample += step;
         }
-	lower_cf.extrapolate_yield_deriv(hist, vals_sum, static_cast<double>(sample),
+
+	lower_cf.extrapolate_yield_deriv(hist, vals_sum, static_cast<double>(sample)/sample_vals_sum,
 					 sample_max_val, sample_val_step, saturation_estimates);
 
     }
@@ -813,8 +814,13 @@ bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_hist,
       if(VERBOSE)
 	cerr << ".";
     }
-    else if(VERBOSE)
+    else if(VERBOSE){
       cerr << "fail_check" << endl;
+      cerr << "estimates = ";
+      for(size_t i = 0; i < std::min(saturation_estimates.size(), static_cast<size_t>(20)); i++)
+	cerr << saturation_estimates[i] << ", ";
+      cerr << endl;
+    }
 
   }
 }

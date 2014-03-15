@@ -33,7 +33,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq gc_extrap bam2mr
+PROGS = preseq gc_extrap bam2mr saturation_extrap
 INCLUDEDIRS = $(SMITHLAB_CPP) $(SAMTOOLS_DIR)
 INCLUDEARGS = $(addprefix -I,$(INCLUDEDIRS))
 
@@ -78,8 +78,10 @@ preseq: continued_fraction.o
 
 gc_extrap: continued_fraction.o
 
+saturation_extrap: continued_fraction.o
+
 ifdef SAMTOOLS_DIR
-bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
+saturation_extrap bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
         $(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
         faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
 endif
