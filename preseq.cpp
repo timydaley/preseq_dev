@@ -1470,8 +1470,7 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
         //resize boot_hist to remove excess zeros
         while (hist.back() == 0)
             hist.pop_back();
-        
-        
+             
         //construct umi vector to sample from
         vector<size_t> umis;
         size_t umi = 1;
@@ -1502,7 +1501,7 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
         size_t max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
         // refit curve for lower bound (degree of approx is 1 less than
         // max_terms)
-        max_terms = max_terms - (max_terms % 2 == 1);
+        max_terms = max_terms - (max_terms % 2 == 0);
         
         //refit curve for lower bound
         const ContinuedFractionApproximation
@@ -1525,7 +1524,7 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
             // SANITY CHECK
             if (check_yield_estimates(yield_vector)) {
                 bootstrap_estimates.push_back(yield_vector);
-                if (VERBOSE) cerr << lower_cf.degree << ", ";
+                if (VERBOSE) cerr << ".";
             }
             else if (VERBOSE){
                 cerr << "_";
