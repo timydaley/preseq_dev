@@ -238,54 +238,59 @@ main(int argc, const char **argv) {
 		out << merged << endl;
 	      else
 		out << dangling_mates[read_name].mr << endl << samr.mr << endl;
+
 	      dangling_mates.erase(read_name);
 	    }
-	    else
+	    else{
 	      out << dangling_mates[read_name].mr << endl << samr.mr << endl;
+	      dangling_mates.erase(read_name);
+
+	    }
+	    else
+	      dangling_mates[read_name] = samr;
 
 	  }
-	  else
-	  {
-	    dangling_mates[read_name] = samr;
-	  }
-
-          // dangling mates is too large, flush dangling_mates of reads
-	  // on different chroms and too far away 
-	  if (dangling_mates.size() > MAX_READS_TO_HOLD)
-	  {
-	    //   if(VERBOSE)
-	    //  cerr << "dangling mates too large, emptying" << endl;
-
-	    using std::tr1::unordered_map;
-	    unordered_map<string, SAMRecord> tmp;
-	    for (unordered_map<string, SAMRecord>::iterator
-		   itr = dangling_mates.begin();
-		 itr != dangling_mates.end(); ++itr)
-	      if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
-		  || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
-		      && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
-		      samr.mr.r.get_start()))
-		{
-		  if (!itr->second.is_Trich) revcomp(itr->second.mr);
-		  if(itr->second.seg_len >= 0)
-		    out << itr->second.mr << endl;
-		}
-	      else
-		tmp[itr->first] = itr->second;
-	    
-	    std::swap(tmp, dangling_mates);
+	  else{ 
+	    // unmatched, output read
+	    if (!samr.is_Trich) revcomp(samr.mr);
+	    if(samr.seg_len == 0)
+	      out << samr.mr << endl;
 	  }
 	}
 	else{ 
 	  // unpaired, output read
-      	  if (!samr.is_Trich) revcomp(samr.mr);
+	  if (!samr.is_Trich) revcomp(samr.mr);
 	  if(samr.seg_len == 0)
 	    out << samr.mr << endl;
 	}
       }
       ++count;
 
+      // dangling mates is too large, flush dangling_mates of reads
+      // on different chroms and too far away 
+      if (dangling_mates.size() > MAX_READS_TO_HOLD){
+	  
+	//   if(VERBOSE)
+	//  cerr << "dangling mates too large, emptying" << endl;
 
+	using std::tr1::unordered_map;
+	unordered_map<string, SAMRecord> tmp;
+	for (unordered_map<string, SAMRecord>::iterator
+	       itr = dangling_mates.begin();
+	     itr != dangling_mates.end(); ++itr){
+	  if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
+	      || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
+		  && itr->second.mr.r.get_end() + MAX_SEGMENT_LENGTH <
+		  samr.mr.r.get_start())) {
+	    if (!itr->second.is_Trich) revcomp(itr->second.mr);
+	    if(itr->second.seg_len >= 0)
+	      out << itr->second.mr << endl;
+	  }
+	  else
+	    tmp[itr->first] = itr->second;
+	}
+      	std::swap(tmp, dangling_mates);
+      }
       
       if (VERBOSE && count % progress_step == 0)
         cerr << "Processed " << count << " records" << endl;
