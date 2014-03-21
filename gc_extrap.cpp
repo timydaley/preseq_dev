@@ -535,7 +535,8 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
   }
   
   for (size_t iter = 0; 
-       (iter < max_iter && bootstrap_estimates.size() < bootstraps); ++iter) {
+       (iter < max_iter && bootstrap_estimates.size() < bootstraps); 
+       ++iter) {
     
     vector<double> yield_vector;
     vector<double> hist;
@@ -582,7 +583,7 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
     size_t max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
     // refit curve for lower bound (degree of approx is 1 less than
     // max_terms)
-    max_terms = max_terms - (max_terms % 2 == 0);
+    max_terms = max_terms - (max_terms % 2 == 1);
     
     //refit curve for lower bound
     const ContinuedFractionApproximation 
@@ -978,7 +979,7 @@ main(const int argc, const char **argv) {
      vector<double> yield_estimates;
      bool SINGLE_ESTIMATE_SUCCESS = 
        single_estimates(VERBOSE, coverage_hist, orig_max_terms, diagonal,
-			bin_step_size, max_extrapolation*avg_bins_per_read, 
+			bin_step_size, max_extrapolation/bin_size, 
 			yield_estimates);
 
 
@@ -1010,7 +1011,7 @@ main(const int argc, const char **argv) {
      vector<vector <double> > bootstrap_estimates;
      vector<double> Ylevel_estimates;
      estimates_bootstrap(VERBOSE, coverage_hist,  bootstraps, orig_max_terms,
-			 diagonal, bin_step_size, max_extrapolation, dupl_level,
+			 diagonal, bin_step_size, max_extrapolation/bin_size, dupl_level,
 			 tolerance, max_iter, // Ylevel_estimates, 
 			 bootstrap_estimates);
       

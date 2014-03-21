@@ -911,6 +911,7 @@ check_yield_estimates_stability(const vector<double> &estimates) {
  * continued fraction by checking for stability of estimates at
  * specific points for yield.
  */
+// New way for searching for optimal CF
 ContinuedFraction
 ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> &counts_hist) const {
   //do this outside
@@ -935,7 +936,8 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
   ContinuedFraction full_CF(full_ps_coeffs, -1, max_terms);  
 
   // if max terms = 4, check only that degree
-  if(max_terms == 4){   
+  if(max_terms == 4 || max_terms == 3 
+     || max_terms == 5 || max_terms == 6){   
     vector<double> estimates;
     full_CF.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
     // return the continued fraction if it is stable
@@ -944,7 +946,11 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
   }
   else{
     //if max terms >= 8, start at 8 and check increasing cont frac's
-    size_t curr_terms = 6;
+    size_t curr_terms = 0;
+    if(max_terms % 2 == 0)
+      curr_terms = 8;
+    else
+      curr_terms = 7;
     while (curr_terms <= max_terms) {    
       ContinuedFraction curr_cf 
 	= ContinuedFraction::truncate_degree(full_CF, curr_terms);
@@ -962,6 +968,53 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
    // no stable continued fraction: return null
   return ContinuedFraction();  
 }
+
+
+/* Finds the optimal number of terms (i.e. degree, depth, etc.) of the
+ * continued fraction by checking for stability of estimates at
+ * specific points for yield.
+ */
+/*  The old way of searching for the optimal CF
+ContinuedFraction
+ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> &counts_hist) const {
+  //do this outside
+  // ensure that we will use an underestimate
+  //  const size_t local_max_terms = max_terms - (max_terms % 2 == 1); 
+  
+  assert(max_terms < counts_hist.size());
+  
+  // counts_sum = number of total captures
+  double counts_sum  = 0.0;
+  for(size_t i = 0; i < counts_hist.size(); i++)
+    counts_sum += i*counts_hist[i];
+  
+  vector<double> ps_coeffs;
+
+  for (size_t j = 1; j <= max_terms; j++)
+    ps_coeffs.push_back(counts_hist[j]*pow(-1, j + 1));  
+
+  ContinuedFraction curr_cf(ps_coeffs, -1, max_terms - 1);
+  
+  while (curr_cf.degree >= MIN_ALLOWED_DEGREE) {    
+    // compute the estimates for the desired set of points
+    vector<double> estimates;
+    curr_cf.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
+    
+    // return the continued fraction if it is stable
+    if (check_yield_estimates_stability(estimates))
+      return curr_cf;
+    
+    // if not cf not acceptable, decrease degree
+    curr_cf = ContinuedFraction::decrease_degree(curr_cf, 2);
+  }
+  
+  //  throw SMITHLABException("unable to fit continued fraction");
+  
+  // no stable continued fraction: return null
+  return ContinuedFraction();  
+}
+*/
+
 
 /* Checks if count estimates do not go out of bounds 
  * and are unimodal
