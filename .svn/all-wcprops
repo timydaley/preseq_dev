@@ -1,0 +1,143 @@
+K 25
+svn:wc:ra_dav:version-url
+V 30
+/repos/preseq_dev/!svn/ver/288
+END
+count_c_curve.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/188/count_c_curve.cpp
+END
+preseq.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 41
+/repos/preseq_dev/!svn/ver/298/preseq.cpp
+END
+mincount_c_curve.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/224/mincount_c_curve.cpp
+END
+newtons_method.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/195/newtons_method.hpp
+END
+count_extrap.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/189/count_extrap.cpp
+END
+library_size_estimates.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/repos/preseq_dev/!svn/ver/229/library_size_estimates.cpp
+END
+gc_extrap.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 44
+/repos/preseq_dev/!svn/ver/298/gc_extrap.cpp
+END
+saturation_extrap.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/295/saturation_extrap.cpp
+END
+gpl-3.0.txt
+K 25
+svn:wc:ra_dav:version-url
+V 42
+/repos/preseq_dev/!svn/ver/128/gpl-3.0.txt
+END
+continued_fraction.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/298/continued_fraction.cpp
+END
+ZTNB.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/repos/preseq_dev/!svn/ver/224/ZTNB.cpp
+END
+mincount_extrap.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/224/mincount_extrap.cpp
+END
+bam2mr.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 41
+/repos/preseq_dev/!svn/ver/298/bam2mr.cpp
+END
+lc_extrap.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 44
+/repos/preseq_dev/!svn/ver/251/lc_extrap.cpp
+END
+library_size_estimates.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/repos/preseq_dev/!svn/ver/228/library_size_estimates.hpp
+END
+continued_fraction.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/291/continued_fraction.hpp
+END
+ZTNB.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/repos/preseq_dev/!svn/ver/224/ZTNB.hpp
+END
+c_curve.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 42
+/repos/preseq_dev/!svn/ver/251/c_curve.cpp
+END
+moment_sequence.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/229/moment_sequence.cpp
+END
+README.txt
+K 25
+svn:wc:ra_dav:version-url
+V 41
+/repos/preseq_dev/!svn/ver/288/README.txt
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/repos/preseq_dev/!svn/ver/295/Makefile
+END
+moment_sequence.hpp
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/228/moment_sequence.hpp
+END
+newtons_method.cpp
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/215/newtons_method.cpp
+END

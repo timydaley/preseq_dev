@@ -1,0 +1,419 @@
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/repos/preseq_dev/!svn/ver/265/samtools
+END
+bam_reheader.c
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/bam_reheader.c
+END
+faidx.h
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/faidx.h
+END
+razf.c
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/razf.c
+END
+AUTHORS
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/AUTHORS
+END
+razf.h
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/razf.h
+END
+bam2bcf_indel.c
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/bam2bcf_indel.c
+END
+kseq.h
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/kseq.h
+END
+glf.c
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/repos/preseq_dev/!svn/ver/265/samtools/glf.c
+END
+sam_view.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/sam_view.c
+END
+bam_aux.c
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/bam_aux.c
+END
+glf.h
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/repos/preseq_dev/!svn/ver/265/samtools/glf.h
+END
+bam_plcmd.c
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/265/samtools/bam_plcmd.c
+END
+sample.c
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/sample.c
+END
+ChangeLog.old
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/265/samtools/ChangeLog.old
+END
+bam_index.c
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/265/samtools/bam_index.c
+END
+sample.h
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/sample.h
+END
+COPYING
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/COPYING
+END
+errmod.c
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/errmod.c
+END
+sam_header.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/sam_header.c
+END
+NEWS
+K 25
+svn:wc:ra_dav:version-url
+V 44
+/repos/preseq_dev/!svn/ver/265/samtools/NEWS
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/Makefile
+END
+errmod.h
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/errmod.h
+END
+sam_header.h
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/sam_header.h
+END
+bam.c
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/repos/preseq_dev/!svn/ver/265/samtools/bam.c
+END
+bam.h
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/repos/preseq_dev/!svn/ver/265/samtools/bam.h
+END
+ChangeLog
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/ChangeLog
+END
+bam_sort.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/bam_sort.c
+END
+bgzip.c
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/bgzip.c
+END
+bam_tview.c
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/265/samtools/bam_tview.c
+END
+bam_pileup.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/bam_pileup.c
+END
+bam_md.c
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/bam_md.c
+END
+sam.c
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/repos/preseq_dev/!svn/ver/265/samtools/sam.c
+END
+kstring.c
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/kstring.c
+END
+bam_endian.h
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/bam_endian.h
+END
+sam.h
+K 25
+svn:wc:ra_dav:version-url
+V 45
+/repos/preseq_dev/!svn/ver/265/samtools/sam.h
+END
+kstring.h
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/kstring.h
+END
+bam_stat.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/bam_stat.c
+END
+bamtk.c
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/bamtk.c
+END
+bam_rmdupse.c
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/265/samtools/bam_rmdupse.c
+END
+bedidx.c
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/bedidx.c
+END
+phase.c
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/phase.c
+END
+cut_target.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/cut_target.c
+END
+bam_maqcns.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/bam_maqcns.c
+END
+khash.h
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/khash.h
+END
+bam_mate.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/bam_mate.c
+END
+bam2depth.c
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/265/samtools/bam2depth.c
+END
+bam_maqcns.h
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/bam_maqcns.h
+END
+bam_rmdup.c
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/265/samtools/bam_rmdup.c
+END
+kprobaln.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/kprobaln.c
+END
+kprobaln.h
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/kprobaln.h
+END
+kaln.c
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/kaln.c
+END
+INSTALL
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/INSTALL
+END
+kaln.h
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/kaln.h
+END
+klist.h
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/klist.h
+END
+bam2bcf.c
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/bam2bcf.c
+END
+knetfile.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/knetfile.c
+END
+bam2bcf.h
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/bam2bcf.h
+END
+knetfile.h
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/knetfile.h
+END
+ksort.h
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/ksort.h
+END
+Makefile.mingw
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/Makefile.mingw
+END
+samtools.1
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/samtools.1
+END
+razip.c
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/razip.c
+END
+bam_cat.c
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/repos/preseq_dev/!svn/ver/265/samtools/bam_cat.c
+END
+bgzf.c
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/bgzf.c
+END
+bam_import.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/bam_import.c
+END
+bam_lpileup.c
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/265/samtools/bam_lpileup.c
+END
+faidx.c
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/repos/preseq_dev/!svn/ver/265/samtools/faidx.c
+END
+bgzf.h
+K 25
+svn:wc:ra_dav:version-url
+V 46
+/repos/preseq_dev/!svn/ver/265/samtools/bgzf.h
+END
+bam_color.c
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/repos/preseq_dev/!svn/ver/265/samtools/bam_color.c
+END

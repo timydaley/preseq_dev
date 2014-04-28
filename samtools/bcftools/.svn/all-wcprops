@@ -1,0 +1,125 @@
+K 25
+svn:wc:ra_dav:version-url
+V 48
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools
+END
+kmin.c
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/kmin.c
+END
+bcf.h
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/bcf.h
+END
+em.c
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/em.c
+END
+kmin.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/kmin.h
+END
+kfunc.c
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/kfunc.c
+END
+index.c
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/index.c
+END
+bcf.tex
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/bcf.tex
+END
+bcfutils.c
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/bcfutils.c
+END
+README
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/README
+END
+fet.c
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/fet.c
+END
+vcf.c
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/vcf.c
+END
+prob1.c
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/prob1.c
+END
+main.c
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/main.c
+END
+prob1.h
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/prob1.h
+END
+vcfutils.pl
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/vcfutils.pl
+END
+bcftools.1
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/bcftools.1
+END
+bcf2qcall.c
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/bcf2qcall.c
+END
+bcf.c
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/bcf.c
+END
+call1.c
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/call1.c
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/repos/preseq_dev/!svn/ver/265/samtools/bcftools/Makefile
+END

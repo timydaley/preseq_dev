@@ -1,0 +1,119 @@
+K 25
+svn:wc:ra_dav:version-url
+V 44
+/repos/preseq_dev/!svn/ver/265/samtools/misc
+END
+zoom2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/misc/zoom2sam.pl
+END
+maq2sam.c
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/repos/preseq_dev/!svn/ver/265/samtools/misc/maq2sam.c
+END
+HmmGlocal.java
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/repos/preseq_dev/!svn/ver/265/samtools/misc/HmmGlocal.java
+END
+varfilter.py
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/repos/preseq_dev/!svn/ver/265/samtools/misc/varfilter.py
+END
+bowtie2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/repos/preseq_dev/!svn/ver/265/samtools/misc/bowtie2sam.pl
+END
+psl2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/misc/psl2sam.pl
+END
+soap2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/misc/soap2sam.pl
+END
+interpolate_sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/repos/preseq_dev/!svn/ver/265/samtools/misc/interpolate_sam.pl
+END
+blast2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 57
+/repos/preseq_dev/!svn/ver/265/samtools/misc/blast2sam.pl
+END
+md5.c
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/misc/md5.c
+END
+wgsim.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/misc/wgsim.c
+END
+wgsim_eval.pl
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/repos/preseq_dev/!svn/ver/265/samtools/misc/wgsim_eval.pl
+END
+samtools.pl
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/misc/samtools.pl
+END
+sam2vcf.pl
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/repos/preseq_dev/!svn/ver/265/samtools/misc/sam2vcf.pl
+END
+md5.h
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/repos/preseq_dev/!svn/ver/265/samtools/misc/md5.h
+END
+md5fa.c
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/repos/preseq_dev/!svn/ver/265/samtools/misc/md5fa.c
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/repos/preseq_dev/!svn/ver/265/samtools/misc/Makefile
+END
+novo2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/repos/preseq_dev/!svn/ver/265/samtools/misc/novo2sam.pl
+END
+export2sam.pl
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/repos/preseq_dev/!svn/ver/265/samtools/misc/export2sam.pl
+END
