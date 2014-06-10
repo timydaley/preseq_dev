@@ -314,9 +314,9 @@ main(int argc, const char **argv) {
 	      if (MERGE_SUCCESS && 
 		  len >= 0 && 
 		  len <= static_cast<int>(MAX_SEGMENT_LENGTH)){
-		if(read_pq.empty())
-		  prev_mr = merged;
-		else
+		//if(read_pq.empty())
+		//prev_mr = merged;
+		//else
 		  read_pq.push(merged);
 	      }
 	      else{
@@ -327,27 +327,27 @@ main(int argc, const char **argv) {
 		}
 
 		// don't throw error for problems merging
-		if(read_pq.empty()){
-		  prev_mr = dangling_mates[read_name].mr;
-		  read_pq.push(samr.mr);
-		}
-		else{
+		//if(read_pq.empty()){
+		// prev_mr = dangling_mates[read_name].mr;
+		// read_pq.push(samr.mr);
+		//}
+		//else{
 		  read_pq.push(samr.mr);
 		  read_pq.push(dangling_mates[read_name].mr);
-		}
+		  //}
 	      }
 
 	      dangling_mates.erase(read_name);
 	    }
 	    else{
-	      if(read_pq.empty()){
-		prev_mr = dangling_mates[read_name].mr;
-		read_pq.push(samr.mr);
-	      }
-	      else{
+	      //if(read_pq.empty()){
+	      //prev_mr = dangling_mates[read_name].mr;
+	      //read_pq.push(samr.mr);
+	      //}
+	      //else{
 		read_pq.push(samr.mr);
 		read_pq.push(dangling_mates[read_name].mr);
-	      }
+		//}
 	      dangling_mates.erase(read_name);
 	    }
 
@@ -369,9 +369,9 @@ main(int argc, const char **argv) {
 	    // unmatched, output read
 	  if (!samr.is_Trich) revcomp(samr.mr);
 
-	  if(read_pq.empty())
-	    prev_mr = samr.mr;
-	  else 
+	  //if(read_pq.empty())
+	  //prev_mr = samr.mr;
+	  //else 
 	    read_pq.push(samr.mr);
 
 	  if(!(read_pq.empty()) &&
