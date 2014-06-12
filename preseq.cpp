@@ -294,6 +294,16 @@ same_read(const size_t suffix_len,
   return (SAME_NAME && a.r.same_chrom(b.r));
 }
 
+// return true if the genomic region is null
+static inline bool
+GenomicRegionIsNull(const GenomicRegion &gr){
+  GenomicRegion null_gr;
+  if(gr == null_gr)
+    return true;
+
+  return false;
+}
+
 
 static void
 empty_pq(GenomicRegion &prev_gr,
@@ -317,13 +327,16 @@ empty_pq(GenomicRegion &prev_gr,
     throw SMITHLABException("reads unsorted in " + input_file_name);
   }
 
-  bool UPDATE_HIST = 
-    update_pe_duplicate_counts_hist(curr_gr, prev_gr, counts_hist, current_count);
-
-  if(!UPDATE_HIST){
-    cerr << "prev = \t" << prev_gr << endl;
-    cerr << "curr = \t" << curr_gr << endl;
-    throw SMITHLABException("locations unsorted in: " + input_file_name);
+  if(GenomicRegionIsNull(prev_gr))
+    current_count = 1;
+  else{
+    bool UPDATE_HIST = 
+      update_pe_duplicate_counts_hist(curr_gr, prev_gr, counts_hist, current_count);
+    if(!UPDATE_HIST){
+      cerr << "prev = \t" << prev_gr << endl;
+      cerr << "curr = \t" << curr_gr << endl;
+      throw SMITHLABException("locations unsorted in: " + input_file_name);
+    }
   }
 
   prev_gr = curr_gr;
@@ -349,7 +362,7 @@ load_counts_BAM_pe(const bool VERBOSE,
     // resize vals_hist, make sure it starts out empty
     counts_hist.clear();
     counts_hist.resize(2, 0.0);
-    size_t current_count = 1;
+    size_t current_count = 0;
     size_t suffix_len = 0;
     n_paired = 0;
     n_mates = 0;
@@ -399,7 +412,7 @@ load_counts_BAM_pe(const bool VERBOSE,
 		}
 		read_pq.push(samr.mr.r);
 		read_pq.push(dangling_mates[read_name].mr.r);
-         
+		n_unpaired += 2;
 	      }
 	      dangling_mates.erase(read_name);
 	    }
@@ -419,8 +432,6 @@ load_counts_BAM_pe(const bool VERBOSE,
 	  read_pq.push(samr.mr.r);
 	  ++n_unpaired;
 	}
-
-
             
 	// dangling mates is too large, flush dangling_mates of reads
 	// on different chroms and too far away
@@ -758,17 +769,8 @@ SplitMappedRead(const bool VERBOSE,
 
 }
 
-/*
-// return true if the genomic region is null
-static inline bool
-GenomicRegionIsNull(const GenomicRegion &gr){
-  GenomicRegion null_gr;
-  if(gr == null_gr)
-    return true;
 
-  return false;
-}
-*/
+
 
 /*
 // extend the read by increasing the end pos by n_bases

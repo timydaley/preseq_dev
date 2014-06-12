@@ -795,6 +795,8 @@ MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
 					    const double fixed_left_end_point,
 					    vector<double> &points,
 					    vector<double> &weights){
+
+
  // make sure that points.size() will be less than n_points
   vector<double> a(alpha);
   a.resize((n_points - 1 < alpha.size()) ? n_points - 1 : alpha.size());
@@ -815,7 +817,7 @@ MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
 
   a.push_back(fixed_left_end_point - 
 	      beta.back()*beta.back()*eval_n_minus1th_orth_poly/eval_nth_orth_poly);
-
+  // use Jacobi-Radau matrix for QR, see eq 4.7 in Gautschi (2006)
 
   if(VERBOSE){
     cerr << "QR" << endl;
