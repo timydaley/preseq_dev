@@ -33,7 +33,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq gc_extrap bam2mr saturation_extrap
+PROGS = preseq gc_extrap bam2mr saturation_extrap test_quadrature
 INCLUDEDIRS = $(SMITHLAB_CPP) $(SAMTOOLS_DIR)
 INCLUDEARGS = $(addprefix -I,$(INCLUDEDIRS))
 
@@ -79,6 +79,8 @@ $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
           smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o RNG.o MappedRead.o)
 
 preseq: continued_fraction.o
+
+test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o
 
 gc_extrap: continued_fraction.o
 

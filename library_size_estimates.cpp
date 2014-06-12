@@ -356,7 +356,7 @@ quadrature_unobserved_upper_bound(const bool VERBOSE,
   bool LOWER_BOUND_QUAD_SUCCESS = false;
   while(!LOWER_BOUND_QUAD_SUCCESS && n_lower_bound_points > 0){
     LOWER_BOUND_QUAD_SUCCESS = 
-      mom_seq.QR_quadrature_rules(VERBOSE, n_lower_bound_points, tol, 
+      mom_seq.QR_quadrature_rules(VERBOSE, n_lower_bound_points, tolerance, 
 				  max_iter, lower_bound_points, lower_bound_weights);
     --n_lower_bound_points;
   }
@@ -376,7 +376,7 @@ quadrature_unobserved_upper_bound(const bool VERBOSE,
     QUAD_SUCCESS = mom_seq.GaussRadau_quadrature_rules(VERBOSE, n_points,
 						       tolerance, max_iter,
 						       lower_limit, points,
-						       weights)
+						       weights);
     --n_points;
   }
 

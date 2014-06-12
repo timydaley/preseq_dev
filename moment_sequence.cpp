@@ -59,8 +59,8 @@ check_three_term_relation(vector<double> &a,
   }
 
   for(size_t i = 0; i < b.size(); i++){
-    if(b[i] <= 0.0 || !finite(b[i])
-       || a[i + 1] <= 0.0 || !finite(a[i + 1])){
+    if(b[i] <= 0.0 || !isfinite(b[i])
+       || a[i + 1] <= 0.0 || !isfinite(a[i + 1])){
       b.resize(i);
       a.resize(i + 1);
       break;
@@ -72,11 +72,11 @@ check_three_term_relation(vector<double> &a,
 // truncate if non-positive element found
 static void
 check_moment_sequence(vector<double> &obs_moms){
-  if(obs_moms[0] <= 0.0 || !finite(obs_moms[0]))
+  if(obs_moms[0] <= 0.0 || !isfinite(obs_moms[0]))
      obs_moms.clear();
 
   for(size_t i = 1; i < obs_moms.size(); i++){
-    if(obs_moms[i] <= 0.0 || !finite(obs_moms[i])){
+    if(obs_moms[i] <= 0.0 || !isfinite(obs_moms[i])){
       obs_moms.resize(i + 1);
       break;
     }
@@ -383,7 +383,7 @@ MomentSequence::set_mean_3term_recurrence(const bool VERBOSE,
       sample_moments.push_back(exp(gsl_sf_lnfact(indx)
 				   + log(sample_hist[indx])
 				   - log(sample_hist[1])));
-      if(!finite(sample_moments.back())){
+      if(!isfinite(sample_moments.back())){
 	sample_moments.pop_back();
 	break;
       }
@@ -568,7 +568,7 @@ QRiteration(vector<double> &alpha,
 static bool
 check_positivity(const vector<double> &points){
   for(size_t i = 0; i < points.size(); i++)
-    if(points[i] <= 0.0 || !finite(points[i]))
+    if(points[i] <= 0.0 || !isfinite(points[i]))
       return false;
 
   return true;
@@ -775,7 +775,7 @@ evaluate_orthog_poly(const vector<double> &alpha,
 
   vector<double> evals(degree + 1, 0.0);
   evals[0] = 1.0;
-  evals[1] = (val - alpha[0])*eval[0];
+  evals[1] = (val - alpha[0])*evals[0];
 
   for(size_t n = 2; n < degree + 1; ++n)
     evals[n] = (val - alpha[n - 1])*evals[n - 1] 
@@ -808,7 +808,7 @@ MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
     evaluate_orthog_poly(alpha, beta, n_points - 1, fixed_left_end_point);
 
   a.push_back(fixed_left_end_point - 
-	      beta*beta*eval_n_minus1th_orth_poly/eval_nth_orth_poly);
+	      beta.back()*beta.back()*eval_n_minus1th_orth_poly/eval_nth_orth_poly);
 
   if(VERBOSE){
     cerr << "QR" << endl;
@@ -832,7 +832,7 @@ MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
   for(size_t i = 0; i < qr_beta.size(); i++)
     error += fabs(qr_beta[i]);
   size_t iter = 0;
-  while(iter < max_iter && error > tol){
+  while(iter < max_iter && error > tolerance){
     QRiteration(eigenvals, qr_beta, eigenvec);
 
     error = 0.0;

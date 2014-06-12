@@ -53,14 +53,14 @@ struct MomentSequence {
 			     std::vector<double> &points);
 
   // quadrature rules using QR on Jacobi matrix 
-  void QR_quadrature_rules(const bool VERBOSE,
+  bool QR_quadrature_rules(const bool VERBOSE,
 			   const size_t n_points,
 			   const double tolerance, 
 			   const size_t max_iter,
 			   std::vector<double> &points,
 			   std::vector<double> &weights);
 
-  void GaussRadau_quadrature_rules(const bool VERBOSE,
+  bool GaussRadau_quadrature_rules(const bool VERBOSE,
 				   const size_t n_points,
 				   const double tolerance,
 				   const size_t max_iter,
@@ -71,7 +71,7 @@ struct MomentSequence {
   // points are determined assuming data is NegBin distrbuted
   // 3-term recurrence is therefore known
   // weights are determined by satisfying observed moment conditions
-  void NegBin_quadrature_rules(const bool VERBOSE,
+  bool NegBin_quadrature_rules(const bool VERBOSE,
 			       const size_t n_points,
 			       const double tolerance,
 			       const size_t max_iter,
