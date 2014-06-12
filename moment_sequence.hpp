@@ -60,6 +60,14 @@ struct MomentSequence {
 			   std::vector<double> &points,
 			   std::vector<double> &weights);
 
+  void GaussRadau_quadrature_rules(const bool VERBOSE,
+				   const size_t n_points,
+				   const double tolerance,
+				   const size_t max_iter,
+				   const double fixed_left_end_point,
+				   std::vector<double> &points,
+				   std::vector<double> &weights);
+
   // points are determined assuming data is NegBin distrbuted
   // 3-term recurrence is therefore known
   // weights are determined by satisfying observed moment conditions

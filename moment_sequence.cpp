@@ -274,6 +274,12 @@ MomentSequence::full_3term_recurrence(const bool VERBOSE,
     }
   }  
 
+  // See Gautschi pgs 10-13,
+  // the nu here is the square of the off-diagonal
+  // of the Jacobi matrix
+  for(size_t i = 0; i < b.size(); i++)
+    b[i] = sqrt(b[i]);
+
   if(VERBOSE){
     cerr << "3-term relations:" << endl;
     cerr << "alpha = ";
@@ -569,7 +575,7 @@ check_positivity(const vector<double> &points){
 }
 
 
-void
+bool
 MomentSequence::QR_quadrature_rules(const bool VERBOSE,
 				    const size_t n_points,
 				    const double tol, 
@@ -595,51 +601,47 @@ MomentSequence::QR_quadrature_rules(const bool VERBOSE,
       cerr << setprecision(16) << b[i] << ", ";
     cerr << endl;
   }
-  bool POSITIVE_POINTS = false;
 
-  while(!(POSITIVE_POINTS) && a.size() > 0){
-    vector<double> eigenvec(a.size(), 0.0);
-    eigenvec[0] = 1.0;
-    vector<double> eigenvals(a);
-    vector<double> qr_beta(b);
+
+  vector<double> eigenvec(a.size(), 0.0);
+  eigenvec[0] = 1.0;
+  vector<double> eigenvals(a);
+  vector<double> qr_beta(b);
   // in QR, off-diagonals go to zero
   // use off diags for convergence
-    double error = 0.0;
+  double error = 0.0;
+  for(size_t i = 0; i < qr_beta.size(); i++)
+    error += fabs(qr_beta[i]);
+  size_t iter = 0;
+  while(iter < max_iter && error > tol){
+    QRiteration(eigenvals, qr_beta, eigenvec);
+
+    error = 0.0;
     for(size_t i = 0; i < qr_beta.size(); i++)
       error += fabs(qr_beta[i]);
-    size_t iter = 0;
-    while(iter < max_iter && error > tol){
-      QRiteration(eigenvals, qr_beta, eigenvec);
+    iter++;
 
-      error = 0.0;
-      for(size_t i = 0; i < qr_beta.size(); i++)
-	error += fabs(qr_beta[i]);
-      iter++;
-
-    }
+  }
   // eigenvalues are on diagonal of J
-    POSITIVE_POINTS = check_positivity(eigenvals);
+  bool POSITIVE_POINTS = check_positivity(eigenvals);
 
-    if(VERBOSE){
-      cerr << "POINTS = ";
-      for(size_t i = 0; i < eigenvals.size(); i++)
-	cerr << eigenvals[i] << ", ";
-      cerr << endl;
-    }
+  if(VERBOSE){
+    cerr << "POINTS = ";
+    for(size_t i = 0; i < eigenvals.size(); i++)
+      cerr << eigenvals[i] << ", ";
+    cerr << endl;
+  }
 
-    if(POSITIVE_POINTS){
-      points.swap(eigenvals);
-      weights.swap(eigenvec);
-    }
-    else{
-      a.pop_back();
-      b.pop_back();
-    }
 
+  if(POSITIVE_POINTS){
+    points.swap(eigenvals);
+    weights.swap(eigenvec);
   }
 
   for(size_t i = 0; i < weights.size(); i++)
     weights[i] = weights[i]*weights[i];
+
+  return POSITIVE_POINTS;
 }
 
 static void
@@ -660,7 +662,7 @@ NegBin_3term_recurrence(const size_t n_points,
     b.push_back(sqrt((i + k)*i/(phi*phi)));
 }
 
-void
+bool
 MomentSequence::NegBin_quadrature_rules(const bool VERBOSE,
 					const size_t n_points,
 					const double tol, 
@@ -687,47 +689,40 @@ MomentSequence::NegBin_quadrature_rules(const bool VERBOSE,
       cerr << setprecision(16) << b[i] << ", ";
     cerr << endl;
   }
-  bool POSITIVE_POINTS = false;
 
-  while(!(POSITIVE_POINTS) && a.size() > 0){
-    vector<double> eigenvec(a.size(), 0.0);
-    eigenvec[0] = 1.0;
-    vector<double> eigenvals(a);
-    vector<double> qr_beta(b);
+  vector<double> eigenvec(a.size(), 0.0);
+  eigenvec[0] = 1.0;
+  vector<double> eigenvals(a);
+  vector<double> qr_beta(b);
   // in QR, off-diagonals go to zero
   // use off diags for convergence
-    double error = 0.0;
+  double error = 0.0;
+  for(size_t i = 0; i < qr_beta.size(); i++)
+    error += fabs(qr_beta[i]);
+  size_t iter = 0;
+  while(iter < max_iter && error > tol){
+    QRiteration(eigenvals, qr_beta, eigenvec);
+
+    error = 0.0;
     for(size_t i = 0; i < qr_beta.size(); i++)
       error += fabs(qr_beta[i]);
-    size_t iter = 0;
-    while(iter < max_iter && error > tol){
-      QRiteration(eigenvals, qr_beta, eigenvec);
-
-      error = 0.0;
-      for(size_t i = 0; i < qr_beta.size(); i++)
-	error += fabs(qr_beta[i]);
-      iter++;
-
-    }
-  // eigenvalues are on diagonal of J
-    POSITIVE_POINTS = check_positivity(eigenvals);
-
-    if(VERBOSE){
-      cerr << "POINTS = ";
-      for(size_t i = 0; i < eigenvals.size(); i++)
-	cerr << eigenvals[i] << ", ";
-      cerr << endl;
-    }
-
-    if(POSITIVE_POINTS){
-      points.swap(eigenvals);
-    }
-    else{
-      a.pop_back();
-      b.pop_back();
-    }
+    iter++;
 
   }
+  // eigenvalues are on diagonal of J
+  bool POSITIVE_POINTS = check_positivity(eigenvals);
+
+  if(VERBOSE){
+    cerr << "POINTS = ";
+    for(size_t i = 0; i < eigenvals.size(); i++)
+      cerr << eigenvals[i] << ", ";
+    cerr << endl;
+  }
+
+  if(!POSITIVE_POINTS)
+    return false;
+
+  points.swap(eigenvals);
 
   // now with fixed points, solve for the weights using moment equations
   // linear system in the weights
@@ -763,5 +758,106 @@ MomentSequence::NegBin_quadrature_rules(const bool VERBOSE,
   weights.resize(points.size());
   for(size_t i = 0; i < weights.size(); i++)
     weights[i] = gsl_vector_get(w, i);
+
+  return true;
 }
 
+// evaluate orthogonal polynomial at prescribed point
+// given 3-term recurrence in Jacobi matrix
+// p_n+1(t) = (t - alpha_n) p_n(t) - (beta_n-1)^2 p_n-1(t)
+double
+evaluate_orthog_poly(const vector<double> &alpha,
+		     const vector<double> &beta,
+		     const size_t degree,
+		     const double val){
+  // make sure we have enough coefficients
+  assert(degree <= alpha.size());
+
+  vector<double> evals(degree + 1, 0.0);
+  evals[0] = 1.0;
+  evals[1] = (val - alpha[0])*eval[0];
+
+  for(size_t n = 2; n < degree + 1; ++n)
+    evals[n] = (val - alpha[n - 1])*evals[n - 1] 
+      - beta[n - 2]*beta[n - 2]*evals[n - 2];
+
+  return evals.back();
+}
+
+// see Gautschi (2006) 
+// Orthogonal polynomials, quadrature, and approximation, 
+// page 38
+bool 
+MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
+					    const size_t n_points,
+					    const double tolerance,
+					    const size_t max_iter,
+					    const double fixed_left_end_point,
+					    vector<double> &points,
+					    vector<double> &weights){
+ // make sure that points.size() will be less than n_points
+  vector<double> a(alpha);
+  a.resize((n_points - 1 < alpha.size()) ? n_points - 1 : alpha.size());
+  vector<double> b(beta);
+  b.resize((n_points - 1 < beta.size()) ? n_points - 1 : beta.size());
+
+  double eval_nth_orth_poly = 
+    evaluate_orthog_poly(alpha, beta, n_points, fixed_left_end_point);
+
+  double eval_n_minus1th_orth_poly = 
+    evaluate_orthog_poly(alpha, beta, n_points - 1, fixed_left_end_point);
+
+  a.push_back(fixed_left_end_point - 
+	      beta*beta*eval_n_minus1th_orth_poly/eval_nth_orth_poly);
+
+  if(VERBOSE){
+    cerr << "QR" << endl;
+    cerr << "alpha = ";
+    for(size_t i = 0; i < a.size(); i++)
+      cerr << setprecision(16) << a[i] << ", ";
+    cerr << endl;
+    cerr << "beta = ";
+    for(size_t i = 0; i < b.size(); i++)
+      cerr << setprecision(16) << b[i] << ", ";
+    cerr << endl;
+  }
+
+  vector<double> eigenvec(a.size(), 0.0);
+  eigenvec[0] = 1.0;
+  vector<double> eigenvals(a);
+  vector<double> qr_beta(b);
+  // in QR, off-diagonals go to zero
+  // use off diags for convergence
+  double error = 0.0;
+  for(size_t i = 0; i < qr_beta.size(); i++)
+    error += fabs(qr_beta[i]);
+  size_t iter = 0;
+  while(iter < max_iter && error > tol){
+    QRiteration(eigenvals, qr_beta, eigenvec);
+
+    error = 0.0;
+    for(size_t i = 0; i < qr_beta.size(); i++)
+      error += fabs(qr_beta[i]);
+    iter++;
+
+  }
+  // eigenvalues are on diagonal of J
+  bool POSITIVE_POINTS = check_positivity(eigenvals);
+
+  if(VERBOSE){
+    cerr << "POINTS = ";
+    for(size_t i = 0; i < eigenvals.size(); i++)
+      cerr << eigenvals[i] << ", ";
+    cerr << endl;
+  }
+
+  if(POSITIVE_POINTS){
+    points.swap(eigenvals);
+    weights.swap(eigenvec);
+  }
+   
+  for(size_t i = 0; i < weights.size(); i++)
+    weights[i] = weights[i]*weights[i];
+
+  return POSITIVE_POINTS;
+}

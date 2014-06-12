@@ -323,6 +323,8 @@ main(int argc, const char **argv) {
 		// informative error message!
 		if(VERBOSE){
 		  cerr << "problem merging read " << read_name << ", splitting read" << endl;
+		  cerr << samr.mr << endl;
+		  cerr << dangling_mates[read_name].mr << endl;
 		  cerr << "To merge, set max segement length (seg_len) higher." << endl;
 		}
 
