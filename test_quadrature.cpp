@@ -204,6 +204,10 @@ main(const int argc, const char **argv) {
       for(size_t i = 0; i < expected_counts_hist.size(); i++)
 	cerr << i << '\t' << expected_counts_hist[i]  << endl;
       cerr << endl;
+
+      cerr << "EXPECTED_UNOBSERVED = "
+	   <<  exp(log(lib_size) - (log(1.0 + alpha*mu))/alpha)
+	   << endl;
     }
 
     cerr << "CHAO_LOWER_BOUND = " 
@@ -219,18 +223,20 @@ main(const int argc, const char **argv) {
 	 << endl;
 
     double lower_lambda = mu*lower_prob;
+    cerr << "lower_limit = " << lower_lambda << endl;
+    /*
     cerr << "2_POINT_QUADRATURE_UPPER_BOUND = "
 	 << quadrature_unobserved_upper_bound(VERBOSE, expected_counts_hist,
 					      tolerance, max_iter, 
 					      lower_lambda, n_points)
 	 << endl;
-
+    */
     n_points = 3;
     cerr << "3_POINT_QUADRATURE_LOWER_BOUND = "
 	 << quadrature_unobserved_lower_bound(VERBOSE, expected_counts_hist,
 					      tolerance, max_iter, n_points)
 	 << endl;
-
+  
     n_points = 3;
     cerr << "3_POINT_QUADRATURE_UPPER_BOUND = "
 	 << quadrature_unobserved_upper_bound(VERBOSE, expected_counts_hist,

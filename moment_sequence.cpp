@@ -802,17 +802,28 @@ MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
   b.resize((n_points - 1 < beta.size()) ? n_points - 1 : beta.size());
 
   double eval_nth_orth_poly = 
-    evaluate_orthog_poly(alpha, beta, n_points, fixed_left_end_point);
+    evaluate_orthog_poly(alpha, beta, n_points - 1, fixed_left_end_point);
+
+  if(VERBOSE) 
+    cerr << "p_n(t) = " << eval_nth_orth_poly << endl;
 
   double eval_n_minus1th_orth_poly = 
-    evaluate_orthog_poly(alpha, beta, n_points - 1, fixed_left_end_point);
+    evaluate_orthog_poly(alpha, beta, n_points - 2, fixed_left_end_point);
+
+  if(VERBOSE)
+    cerr << "p_n-1(t) = " << eval_n_minus1th_orth_poly << endl;
 
   a.push_back(fixed_left_end_point - 
 	      beta.back()*beta.back()*eval_n_minus1th_orth_poly/eval_nth_orth_poly);
 
+
   if(VERBOSE){
     cerr << "QR" << endl;
     cerr << "alpha = ";
+    for(size_t i = 0; i < alpha.size(); i++)
+      cerr << setprecision(16) << alpha[i] << ", ";
+    cerr << endl;
+    cerr << "a = ";
     for(size_t i = 0; i < a.size(); i++)
       cerr << setprecision(16) << a[i] << ", ";
     cerr << endl;
