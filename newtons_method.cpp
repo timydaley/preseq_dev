@@ -38,6 +38,7 @@ using std::max;
 using std::cerr;
 using std::endl;
 using std::numeric_limits;
+using std::isfinite;
 
 
 using smithlab::log_sum_log_vec;
@@ -136,7 +137,7 @@ static inline bool
 check_finite(const vector<double> &x){
   bool ALL_FINITE = true;
   for(size_t i = 0; i < x.size(); i++)
-    ALL_FINITE = ALL_FINITE && finite(x[i]);
+    ALL_FINITE = ALL_FINITE && isfinite(x[i]);
 
   return ALL_FINITE;
 }
@@ -269,7 +270,7 @@ iterate_newton(const vector<double> &current_values,
 
   double log_det = gsl_linalg_LU_lndet(LU);
 
-  if(finite(fabs(log_det))){
+  if(isfinite(fabs(log_det))){
 
     gsl_linalg_LU_solve(LU, P, neg_f_vals, direction);
     //gsl_linalg_QR_solve(QR, tau, neg_f_vals, direction);

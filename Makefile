@@ -80,7 +80,7 @@ $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
 
 preseq: continued_fraction.o
 
-test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o
+test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
 
 gc_extrap: continued_fraction.o
 

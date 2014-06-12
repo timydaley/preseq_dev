@@ -1,6 +1,6 @@
-/*    test_harris:
+/*    test_quadrature:
  *
- *    Copyright (C) 2012 University of Southern California and
+ *    Copyright (C) 2014 University of Southern California and
  *			 Andrew D. Smith and Timothy Daley
  *
  *    Authors: Andrew D. Smith and Timothy Daley
@@ -36,6 +36,7 @@
 #include "moment_sequence.hpp"
 #include "ZTNB.hpp"
 #include "library_size_estimates.hpp"
+#include "newtons_method.hpp"
 
 using std::string;
 using std::vector;
@@ -45,7 +46,7 @@ using std::max;
 using std::fixed;
 using std::setprecision;
 
-
+/*
 void
 generate_NBD(const vector<double> &mus, 
 	     const vector<double> &alphas,
@@ -74,7 +75,10 @@ generate_NBD(const vector<double> &mus,
   }
      
 } 
+*/
 
+
+/*
 // m[j] = 'th modified moment, v[j]=j'th moment
 // monic generalized laguerre polynomial w/ k = 1/alpha,
 // p = mu*alpha/(1+ mu*alpha) : l_{j}(x)
@@ -100,7 +104,28 @@ laguerre_modified_moments(const vector<double> &orig_moments,
     } 
   } 
 }
+*/
 
+
+void
+expected_NegBin_counts_hist(const double mu,
+			    const double alpha,
+			    const double tolerance,
+			    const size_t lib_size,
+			    vector<double> &expected_counts_hist){
+  expected_counts_hist.clear();
+  expected_counts_hist.push_back(0.0);
+  double count = 1;
+  do{
+    double expected_count = 
+      exp(log(lib_size) + gsl_sf_lngamma(count + alpha) 
+	  - gsl_sf_lngamma(count + 1.0) - gsl_sf_lngamma(alpha) 
+	  + count*(log(alpha) + log(mu) - log(1.0 + alpha*mu))
+	  - (log(1.0 + alpha*mu))/alpha);
+    expected_counts_hist.push_back(expected_count);
+    ++count;
+  } while (expected_counts_hist.back() > tolerance);
+}
 
 int
 main(const int argc, const char **argv) {
@@ -117,10 +142,9 @@ main(const int argc, const char **argv) {
     size_t hist_max_terms = 1000;
     size_t bootstraps = 1000;
     double CI = 0.95;
-    size_t n_mixtures = 1;
-    string alphas_string;
-    string mus_string;
-    string mixing_string;
+    double mu = 1.0;
+    double alpha = 1.0;
+    double lower_prob = 1e-10;
 
     
     /* FLAGS */
@@ -133,27 +157,24 @@ main(const int argc, const char **argv) {
 			   "<sorted-bed-file>");
     opt_parse.add_opt("outfile", 'o', "output file for estimates",
 		      false , outfile);
-    opt_parse.add_opt("n_points",'p', "number of points for approximation",
-		      false, num_points);
+    //  opt_parse.add_opt("n_points",'p', "number of points for approximation",
+    //		      false, num_points);
     opt_parse.add_opt("hist_max_terms",'h',"max terms in histogram",
 		      false, hist_max_terms);
-    opt_parse.add_opt("lib_size",'l', "library size",
+    opt_parse.add_opt("lib_size",'L', "library size",
 		      false, lib_size);
-    opt_parse.add_opt("n_mixtures", 'n', "number of mixtures",
-		      true, n_mixtures);
-    opt_parse.add_opt("mean", 'm', "mus, seperated by ,", true, mus_string);
-    opt_parse.add_opt("alpha",'a',"alphas for NegBin dist",
-    		      true, alphas_string);
-    opt_parse.add_opt("mixing", 'x', "mixing parameters, must sum to 1",
-		      true, mixing_string);
+    opt_parse.add_opt("mean", 'm', "mean of Negative Binomial",
+		      false, mu);
+    opt_parse.add_opt("alpha",'a',"dispersion parameter for Negative Binomial",
+		      false, alpha);
     opt_parse.add_opt("tol",'t',"numerical tolerance",
 		      false, tolerance);
     opt_parse.add_opt("max_iter",'i',"maximum # iterations",
 		      false, max_iter);
     opt_parse.add_opt("bootstraps",'b',"number of bootstraps to perform",
 		      false, bootstraps);
-    opt_parse.add_opt("CI",'c', "Confidence level",
-		      false, CI);
+    opt_parse.add_opt("lower_prob", 'l', "lower bound on probability",
+		      false, lower_prob);
     //	opt_parse.add_opt("terms",'t',"maximum number of terms", false, 
     //	     orig_max_terms);
     opt_parse.add_opt("verbose", 'v', "print more information", 
@@ -175,143 +196,60 @@ main(const int argc, const char **argv) {
     }
     /******************************************************************/
 
-    /*
-    cerr << "READING IN PARAMS" << endl;
-    vector<double> mixing;
-    vector<double> distro_alphas;
-    vector<double> mus;
+    vector<double> expected_counts_hist;
+    expected_NegBin_counts_hist(mu, alpha, 0.01, lib_size, expected_counts_hist);
 
-    vector<string> alphas_parts = smithlab::split(alphas_string, ",");    
-    vector<string> mus_parts  = smithlab::split(mus_string, ",");
-    vector<string> mixing_parts = smithlab::split(mixing_string, ",");
-    for(size_t i = 0; i < n_mixtures; i++){
-      distro_alphas.push_back(atof(alphas_parts[i].c_str()));
-      mus.push_back(atof(mus_parts[i].c_str()));
-      mixing.push_back(atof(mixing_parts[i].c_str()));
-    }    
-    double mix_sum = accumulate(mixing.begin(), mixing.end(), 0.0);
-    if( mix_sum!= 1){
-      cerr << "Mixing parameters must sum to 1! \n";
-      cerr << "Mixing sums to " << 
-	mix_sum << ", need to reweight";
-    }
-    for(size_t i = 0; i < mixing.size(); i++)
-      mixing[i] = mixing[i]/mix_sum;
-    
-    vector< vector<double> > alphas, betas;
-
-    size_t iter = 0;
-
-    std::ofstream of;
-    if (!outfile.empty()) of.open(outfile.c_str());
-    std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
-    for(size_t i = 0; i < num_points; i++)
-      out << "alpha" << i << '\t';
-    for(size_t i = 1; i < num_points; i++)
-      out << "beta" << i << '\t';
-    out << endl;
-
-
-    while(iter < bootstraps){
-      if(VERBOSE)
-	cerr << "ITER " << iter << endl;
-      iter++;
-    // BUILD THE HISTOGRAM
-    //    double mu = sampled_reads/lib_size;
-      if(VERBOSE)
-	cerr << "GENERATE SAMPLE" << endl; 
-      vector<size_t> sample_counts(lib_size, 0);
-      generate_NBD(mus, distro_alphas, mixing, sample_counts);
-      const size_t max_observed_count = *std::max_element(sample_counts.begin(), sample_counts.end());
-      vector<double> counts_hist(max_observed_count + 1, 0.0);
-      for(size_t i = 0; i < sample_counts.size(); i++)
-	counts_hist[sample_counts[i]]++;
-
-      counts_hist[0] = 0;
-
-      const double distinct_reads = accumulate(counts_hist.begin(), counts_hist.end(), 0.0);
-
-      if (VERBOSE) {
-	cerr << "LIBRARY_SIZE = " << lib_size << endl;
-	cerr << "MU = ";
-	for(size_t i = 0; i < mus.size(); i ++)
-	  cerr << mus[i] << ", ";
-	cerr << endl; 
-	cerr << "ALPHA = ";
-	for(size_t i = 0; i < distro_alphas.size(); i++)
-	  cerr << distro_alphas[i] << ", ";
-	cerr << endl; 
-	cerr << "MIXING = ";
-	for(size_t i = 0; i < mixing.size(); i++)
-	  cerr << mixing[i] << ", ";
-	cerr << endl;
-
-      // OUTPUT THE ORIGINAL HISTOGRAM
-	cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
-	for (size_t i = 0; i < counts_hist.size(); i++)
-	  if (counts_hist[i] > 0)
-	    cerr << i << '\t' << setprecision(16) << counts_hist[i] << endl;
-      }
-
-      vector<double> measure_moments;
-  // mu_r = (r + 1)! n_{r+1} / n_1
-      size_t indx = 1;
-      while(counts_hist[indx] > 0  && indx <= counts_hist.size()){
-	measure_moments.push_back(exp(gsl_sf_lnfact(indx)
-				      + log(counts_hist[indx])
-				      - log(counts_hist[1])));
-	if(!isfinite(measure_moments.back())){
-	  measure_moments.pop_back();
-	  break;
-	}
-	indx++;
-      }
-      
-
-      size_t n_points = std::min(num_points, static_cast<size_t>(floor(measure_moments.size()/2)));
-      
-      if(VERBOSE){
-	cerr << "MOMENTS" << endl;
-	for(size_t i = 0; i < measure_moments.size(); i++)
-	  cerr << std::setprecision(16) << measure_moments[i] << endl;
-	cerr << "OBSERVED_DISTINCT = " << accumulate(counts_hist.begin(), counts_hist.end(), 0.0) << endl;
-      }
-    
-    /////////////////////////////////////////////////////////////////////
-    /////////////////////////////////////////////////////////////////////
-    /////////////////////////////////////////////////////////////////////
-
-      MomentSequence quad_mom_seq(measure_moments);
-      ZTNBD distro(1.0, 1.0);
-      distro.EM_estim_params(tolerance, max_iter, counts_hist);
-      vector<double> modified_moments;
-      laguerre_modified_moments(measure_moments, distro.get_mu(),
-				distro.get_alpha(),  num_points,
-				modified_moments);
-      const double k = 1/distro.get_alpha();
-      const double p = distro.get_alpha()*distro.get_mu()/(1.0 + distro.get_alpha()*distro.get_mu());
-      vector<double> modified_alpha, modified_beta;
-      for(size_t i = 0; i < 2*num_points; i++)
-	modified_alpha.push_back(p*(2*i + 1 + k));
-      for(size_t i = 1; i < 2*num_points; i++)
-	modified_beta.push_back(p*p*(i + k)*i);
-      vector<double> full_alpha, full_beta;
-      quad_mom_seq.modified_Chebyshev(VERBOSE, num_points, modified_alpha,
-					   modified_beta, modified_moments,
-					   full_alpha, full_beta);
-
-      full_alpha.resize(num_points);
-      full_beta.resize(num_points - 1);
-
-      for(size_t i = 0; i < full_alpha.size(); i++)
-	out << full_alpha[i] << '\t';
-      for(size_t i = 0; i < full_beta.size(); i++)
-	out << full_beta[i] << '\t';
-      out << endl;
+    if(VERBOSE){
+      cerr << "EXPECTED COUNTS = " << endl;
+      for(size_t i = 0; i < expected_counts_hist.size(); i++)
+	cerr << i << '\t' << expected_counts_hist[i]  << endl;
+      cerr << endl;
     }
 
-    */
+    cerr << "CHAO_LOWER_BOUND = " 
+	 << chao87_lowerbound_unobserved(expected_counts_hist) << endl;
 
+    cerr << "HARRIS_3MOMENT_LOWER_BOUND = "
+	 << harris_3moments_unobserved(VERBOSE, expected_counts_hist) << endl;
+
+    size_t n_points = 2;
+    cerr << "2_POINT_QUADRATURE_LOWER_BOUND = "
+	 << quadrature_unobserved_lower_bound(VERBOSE, expected_counts_hist,
+					      tolerance, max_iter, n_points)
+	 << endl;
+
+    double lower_lambda = mu*lower_prob;
+    cerr << "2_POINT_QUADRATURE_UPPER_BOUND = "
+	 << quadrature_unobserved_upper_bound(VERBOSE, expected_counts_hist,
+					      tolerance, max_iter, 
+					      lower_lambda, n_points)
+	 << endl;
+
+    n_points = 3;
+    cerr << "3_POINT_QUADRATURE_LOWER_BOUND = "
+	 << quadrature_unobserved_lower_bound(VERBOSE, expected_counts_hist,
+					      tolerance, max_iter, n_points)
+	 << endl;
+
+    n_points = 3;
+    cerr << "3_POINT_QUADRATURE_UPPER_BOUND = "
+	 << quadrature_unobserved_upper_bound(VERBOSE, expected_counts_hist,
+					      tolerance, max_iter, 
+					      lower_lambda, n_points)
+	 << endl;
+
+    n_points = 4;
+    cerr << "4_POINT_QUADRATURE_LOWER_BOUND = "
+	 << quadrature_unobserved_lower_bound(VERBOSE, expected_counts_hist,
+					      tolerance, max_iter, n_points)
+	 << endl;
+
+    n_points = 4;
+    cerr << "4_POINT_QUADRATURE_UPPER_BOUND = "
+	 << quadrature_unobserved_upper_bound(VERBOSE, expected_counts_hist,
+					      tolerance, max_iter, 
+					      lower_lambda, n_points)
+	 << endl;
 
     
     /////////////////////////////////////////////////////////////////////

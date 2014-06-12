@@ -1,4 +1,4 @@
-/*    Copyright (C) 2013 University of Southern California and
+/*    Copyright (C) 2014 University of Southern California and
  *                       Andrew D. Smith and Timothy Daley
  *
  *    Authors: Andrew D. Smith and Timothy Daley
