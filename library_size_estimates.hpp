@@ -46,11 +46,19 @@ harris_newton_unobserved(const bool VERBOSE,
 
 
 double
-quadrature_unobserved(const bool VERBOSE,
-		      const std::vector<double> &counts_hist,
-		      const double tolerance,
-		      const size_t max_iter,
-		      size_t &n_points);
+quadrature_unobserved_lower_bound(const bool VERBOSE,
+				  const std::vector<double> &counts_hist,
+				  const double tolerance,
+				  const size_t max_iter,
+				  size_t &n_points);
+
+double
+quadrature_unobserved_upper_bound(const bool VERBOSE,
+				  const std::vector<double> &counts_hist,
+				  const double tolerance,
+				  const size_t max_iter,
+				  const double lower_limit,
+				  size_t &n_points);
 
 double
 quadrature_mean3term_unobserved(const bool VERBOSE,
