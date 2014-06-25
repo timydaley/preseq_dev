@@ -57,8 +57,7 @@ generate_NBD(const double mu,
   rng = gsl_rng_alloc(T);
   gsl_rng_set(rng, time(NULL) + getpid());
   const double n = 1/alpha;
-  const double p = n/(n + mu);
-
+  const double p = 1.0/(1.0 + mu*alpha);
 
   for(size_t i = 0; i < sample.size(); i++)
     sample[i] = gsl_ran_negative_binomial(rng, p, n);
@@ -79,14 +78,26 @@ laguerre_modified_moments(const vector<double> &orig_moments,
 			  vector<double> &modified_moments){
   modified_moments.resize(2*n_points, 0.0);
   const double k = 1/alpha;
-  const double p = mu*alpha/(1.0 + mu*alpha);
-  for(size_t n = 0; n < modified_moments.size(); n++){
-    for(size_t l = 0; l <= n; l++){
-      modified_moments[n] += 
+  const double phi = (1.0 + alpha*mu)/(alpha*mu);
+
+  cerr << "k = " << k << endl;
+  cerr << "phi = " << phi << endl;
+
+  cerr << "orig_moments = ";
+  for(size_t i = 0; i < 2*n_points; i++)
+    cerr << orig_moments[i] << '\t';
+  cerr << endl;
+
+  for(int n = 0; n < modified_moments.size(); n++){
+    for(int l = 0; l <= n; l++){
+      const double add_to_moment = 
 	exp(gsl_sf_lngamma(n + k + 1) - gsl_sf_lngamma(n - l + 1)
-	    - gsl_sf_lngamma(k + l) + gsl_sf_lnfact(n)
-	    - gsl_sf_lnfact(l + 1) + (n - l)*log(p)
-	    + l *log(orig_moments[l]))*pow(-1, n + l); 
+	    - gsl_sf_lngamma(k + l + 1) + gsl_sf_lnfact(n)
+	    - gsl_sf_lnfact(l) - (n - l)*log(phi)
+	    + log(orig_moments[l]))*pow(-1, n + l);
+	cerr << "n = " << n << ", l = " << l << ", orig_moment = " << orig_moments[l]
+	     << ", adding: " << add_to_moment << endl;
+      modified_moments[n] += add_to_moment; 
     } 
   } 
 }
@@ -161,12 +172,13 @@ main(const int argc, const char **argv) {
 
     vector<double> true_alphas3term, true_betas3term;
     const double r = 1/distro_alpha;
-    const double p = r/(r + distro_mu);
+    const double phi = (1.0 + distro_alpha*distro_mu)/(distro_alpha*distro_mu);
+
     for(size_t i = 0; i < num_points; i++)
-      true_alphas3term.push_back(p*(2*i + 1 + r));
+      true_alphas3term.push_back((2*i + 1 + r)/phi);
 
     for(size_t i = 1; i < num_points; i++)
-      true_betas3term.push_back(p*p*(i + r)*i);
+      true_betas3term.push_back((i + r)*i/(phi*phi));
 
 
 
@@ -242,15 +254,21 @@ main(const int argc, const char **argv) {
 	cerr << endl;
       }
 
+      if(VERBOSE){
+	cerr << "esitmated mu = " << distro.get_mu() << endl;
+	cerr << "estimated alpha = " << distro.get_alpha() << endl;
+      }
+
       const double estimated_r = 1/distro.get_alpha();
-      const double estimated_p = 
-	distro.get_alpha()*distro.get_mu()/(1.0 + distro.get_alpha()*distro.get_mu());
+      const double estimated_phi = 
+	(1.0 + distro.get_alpha()*distro.get_mu())/(distro.get_alpha()*distro.get_mu());
+
       vector<double> fitted_alpha, fitted_beta;
       for(size_t i = 0; i < num_points; i++)
-	fitted_alpha.push_back(estimated_p*(2*i + 1 + estimated_r));
+	fitted_alpha.push_back((2*i + 1 + estimated_r)/estimated_phi);
 
       for(size_t i = 1; i < num_points; i++)
-	fitted_beta.push_back(estimated_p*estimated_p*(i + estimated_r)*i);
+	fitted_beta.push_back((i + estimated_r)*i/(estimated_phi*estimated_phi));
       modCheb_mom_seq.modified_Chebyshev(VERBOSE, n_points, true_alphas3term,
 					 true_betas3term, modified_moments);
 
@@ -272,7 +290,8 @@ main(const int argc, const char **argv) {
 	    << modCheb_mom_seq.alpha[i] << endl;
 
       for(size_t i = 0; i < n_points - 1; i++)
-	out << "beta" << i + 1 << '\t' << true_betas3term[i] << '\t' << fitted_beta[i] << '\t'
+	out << "beta" << i + 1 << '\t' << std::sqrt(true_betas3term[i]) 
+	    << '\t' << std::sqrt(fitted_beta[i]) << '\t'
 	    << gw_mom_seq.beta[i] << '\t' << unmodCheb_mom_seq.beta[i] << '\t'
 	    << modCheb_mom_seq.beta[i] << endl;
 
