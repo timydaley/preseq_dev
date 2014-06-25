@@ -80,14 +80,6 @@ laguerre_modified_moments(const vector<double> &orig_moments,
   const double k = 1/alpha;
   const double phi = (1.0 + alpha*mu)/(alpha*mu);
 
-  cerr << "k = " << k << endl;
-  cerr << "phi = " << phi << endl;
-
-  cerr << "orig_moments = ";
-  for(size_t i = 0; i < 2*n_points; i++)
-    cerr << orig_moments[i] << '\t';
-  cerr << endl;
-
   for(int n = 0; n < modified_moments.size(); n++){
     for(int l = 0; l <= n; l++){
       const double add_to_moment = 
@@ -95,8 +87,6 @@ laguerre_modified_moments(const vector<double> &orig_moments,
 	    - gsl_sf_lngamma(k + l + 1) + gsl_sf_lnfact(n)
 	    - gsl_sf_lnfact(l) - (n - l)*log(phi)
 	    + log(orig_moments[l]))*pow(-1, n + l);
-	cerr << "n = " << n << ", l = " << l << ", orig_moment = " << orig_moments[l]
-	     << ", adding: " << add_to_moment << endl;
       modified_moments[n] += add_to_moment; 
     } 
   } 
