@@ -46,6 +46,28 @@ using std::fixed;
 using std::setprecision;
 using std::isfinite;
 
+void
+resample_hist(const gsl_rng *rng,
+              const vector<double> &counts_hist,
+              vector<double> &sample_hist) {
+    
+
+  unsigned int distinct = 
+    static_cast<unsigned int>(accumulate(counts_hist.begin(),
+					 counts_hist.end(), 0.0));
+
+  vector<unsigned int> sample_counts_hist(counts_hist.size(), 0);
+
+        
+  gsl_ran_multinomial(rng, counts_hist.size(), distinct,
+		      &distinct_counts_hist.front(),
+		      &sample_counts_hist.front());
+    
+  sample_hist.resize(counts_hist.size(), 0.0);
+  for(size_t i = 0; i < sample_counts_hist.size(); i++)
+    sample_hist[i] = static_cast<double>(sample_counts_hist[i]);
+}
+
 
 void
 generate_NBD(const double mu,
@@ -123,7 +145,7 @@ main(const int argc, const char **argv) {
   try {
 
     /* FILES */
-    string three_term_outfile, quad_outfile;
+    string outfile;
     
     size_t num_points = 100;
     size_t lib_size = 1000000;
@@ -131,7 +153,6 @@ main(const int argc, const char **argv) {
     size_t max_iter = 1000;
     size_t hist_max_terms = 1000;
     size_t bootstraps = 1000;
-    double CI = 0.95;
     double distro_alpha = 1.0;
     double distro_mu = 1.0;
 
@@ -142,31 +163,22 @@ main(const int argc, const char **argv) {
     
     /**************** GET COMMAND LINE ARGUMENTS ***********************/
     OptionParser opt_parse(strip_path(argv[0]), 
-			   "",
-			   "<sorted-bed-file>");
-    opt_parse.add_opt("three_term_outfile", 't', "output file for three term recurrence",
+			   "", "<sorted-bed-file>");
+    opt_parse.add_opt("outfile", 't', "output file name",
 		      false , three_term_outfile);
-    opt_parse.add_opt("quad_outfile", 'q', "output file for quadrature estimates",
-		      false, quad_outfile);
     opt_parse.add_opt("n_points",'p', "number of points for approximation",
 		      false, num_points);
-    opt_parse.add_opt("hist_max_terms",'h',"max terms in histogram",
-		      false, hist_max_terms);
-    opt_parse.add_opt("lib_size",'l', "library size",
+    opt_parse.add_opt("lib_size",'l', "true library size",
 		      false, lib_size);
     opt_parse.add_opt("mean", 'm', "mu for NegBin dist", false, distro_mu);
     opt_parse.add_opt("alpha",'a',"alpha for NegBin dist",
     		      false, distro_alpha);
-    //    opt_parse.add_opt("tol",'t',"numerical tolerance",
-    //		      false, tolerance);
+    opt_parse.add_opt("tol",'t',"numerical tolerance",
+    		      false, tolerance);
     opt_parse.add_opt("max_iter",'i',"maximum # iterations",
 		      false, max_iter);
     opt_parse.add_opt("bootstraps",'b',"number of bootstraps to perform",
 		      false, bootstraps);
-    opt_parse.add_opt("CI",'c', "Confidence level",
-		      false, CI);
-    //	opt_parse.add_opt("terms",'t',"maximum number of terms", false, 
-    //	     orig_max_terms);
     opt_parse.add_opt("verbose", 'v', "print more information", 
 		      false, VERBOSE);
     
@@ -186,20 +198,6 @@ main(const int argc, const char **argv) {
     }
     /******************************************************************/
 
-    vector<double> true_alphas3term, true_betas3term;
-    const double r = 1/distro_alpha;
-    const double phi = (1.0 + distro_alpha*distro_mu)/(distro_alpha*distro_mu);
-
-    for(size_t i = 0; i < num_points; i++)
-      true_alphas3term.push_back((2*i + 1 + r)/phi);
-
-    for(size_t i = 1; i < num_points; i++)
-      true_betas3term.push_back((i + r)*i/(phi*phi));
-
-
-
-    // BUILD THE HISTOGRAM
-    //    double mu = sampled_reads/lib_size;
       if(VERBOSE)
 	cerr << "GENERATE SAMPLE" << endl; 
       vector<size_t> sample_counts(lib_size, 0);
@@ -256,88 +254,85 @@ main(const int argc, const char **argv) {
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////
 
-      MomentSequence modCheb_mom_seq(measure_moments);
-      ZTNBD distro(1.0, 1.0);
-      distro.EM_estim_params(tolerance, max_iter, counts_hist);
-      vector<double> modified_moments;
-      laguerre_modified_moments(measure_moments, distro_mu,
-				distro_alpha, num_points,
-				modified_moments);
-      if(VERBOSE){
-	cerr << "Laguerre modified moments = ";
-	for(size_t i = 0; i < modified_moments.size(); i++)
-	  cerr << modified_moments[i] << '\t';
-	cerr << endl;
+      vector< vector<double> > alphas, betas;
+      while(alphas.size() < bootstraps){
+	vector<double> sample_hist;
+	resample_hist(rng, counts_hist, sample_hist);
+
+	vector<double> sample_moments;
+  // mu_r = (r + 1)! n_{r+1} / n_1
+	size_t indx = 1;
+	while(sample_hist[indx] > 0  && indx <= sample_hist.size()){
+	  sample_moments.push_back(exp(gsl_sf_lnfact(indx)
+				       + log(sample_hist[indx])
+				       - log(sample_hist[1])));
+	  if(!std::isfinite(sample_moments.back())){
+	    sample_moments.pop_back();
+	    break;
+	  }
+	  indx++;
+	}
+      
+	if(sample_moments.size()/2 >= n_points){
+
+	  MomentSequence unmodCheb_mom_seq(sample_moments);
+	  unmodCheb_mom_seq.unmodified_Chebyshev(VERBOSE);
+
+	  if(unmodCheb_mom_seq.alpha.size() >= n_points){
+	    unmod_mom_seq.alpha.resize(n_points);
+	    unmod_mom_seq.beta.resize(n_points - 1);
+	    alphas.push_back(unmod_mom_seq.alpha);
+	    betas.push_back(unmod_mom_seq.beta);
+	  }
+	}
       }
 
-      if(VERBOSE){
-	cerr << "esitmated mu = " << distro.get_mu() << endl;
-	cerr << "estimated alpha = " << distro.get_alpha() << endl;
+      vector<double> median_alpha, median_beta;
+      for(size_t j = 0; j < n_points; j++){
+	vector<double> alpha_j;
+	for(size_t i = 0; i < alphas.size(); i++)
+	  alpha_j.push_back(alphas[i][j]);
+
+	sort(alpha_j.begin(), alpha_j.end());
+	median_alpha.push_back(gsl_stats_median_from_sorted_data(&alpha_j[0], 1, alpha_j.size()));
+      }
+      for(size_t j = 0; j < n_points - 1; j++){
+	vector<double> beta_j;
+	for(size_t i = 0; i < betas.size(); i++)
+	  beta_j.push_back(betas[i][j]);
+
+	sort(beta_j.begin(), beta_j.end());
+	median_beta.push_back(gsl_stats_median_from_sorted_data(&beta_j[0], 1, beta_j.size()));
       }
 
-      const double estimated_r = 1/distro.get_alpha();
-      const double estimated_phi = 
-	(1.0 + distro.get_alpha()*distro.get_mu())/(distro.get_alpha()*distro.get_mu());
+      MomentSequence median_unmodCheb_mom_seq(median_alpha, median_beta);
 
-      vector<double> fitted_alpha, fitted_beta;
-      for(size_t i = 0; i < num_points; i++)
-	fitted_alpha.push_back((2*i + 1 + estimated_r)/estimated_phi);
+      vector<double> points, weights;
+      bool QUAD_SUCCESS = 
+	median_unmodCheb_mom_seq.QR_quadrature_rules(VERBOSE, n_points,
+						   tolerance, max_iter,
+						   points, weights);
 
-      for(size_t i = 1; i < num_points; i++)
-	fitted_beta.push_back((i + estimated_r)*i/(estimated_phi*estimated_phi));
-      modCheb_mom_seq.modified_Chebyshev(VERBOSE, n_points, true_alphas3term,
-					 true_betas3term, modified_moments);
-      double mod_Cheb_quad_estimate = 0.0;
-      check_three_term_relation(modCheb_mom_seq.alpha, modCheb_mom_seq.beta);
-      for(size_t i = 0; i < modCheb_mom_seq.beta.size(); i++)
-	modCheb_mom_seq.beta[i] = std::sqrt(modCheb_mom_seq.beta[i]);
-      if(modCheb_mom_seq.alpha.size() >= n_points){
-	vector<double> mod_Cheb_points, mod_Cheb_weights;
-	modCheb_mom_seq.QR_quadrature_rules(VERBOSE, n_points, tolerance, max_iter, mod_Cheb_points, mod_Cheb_weights);
-	for(size_t i = 0; i < mod_Cheb_points.size(); i++)
-	  mod_Cheb_quad_estimate += counts_hist[1]*mod_Cheb_weights[i]/mod_Cheb_points[i];
+      double estimated_lib_size = 0.0;
+      if(QUAD_SUCCESS){
+	for(size_t i = 0; i < points.size(); i++)
+	  estimated_lib_size += counts_hist[1]*weights[i]/points[i];
       }
 
+      std::ofstream of;
+      if (!outfile.empty()) of.open(outfile.c_str());
+      std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
+      for(size_t i = 0 ; i < median_alpha.size(); i++)
+	out << "median_alpha" << i << '\t';
+      for(size_t i = 0; i < median_beta.size(); i++)
+	out << "median_beta" << i << '\t';
+      out << "estimated_lib_size" << endl;
 
-
-
-      MomentSequence unmodCheb_mom_seq(measure_moments);
-      unmodCheb_mom_seq.unmodified_Chebyshev(VERBOSE);
-      double unmod_Cheb_quad_estimate = 0.0;
-      check_three_term_relation(unmodCheb_mom_seq.alpha, unmodCheb_mom_seq.beta);
-      for(size_t i = 0; i < unmodCheb_mom_seq.beta.size(); i++)
-	unmodCheb_mom_seq.beta[i] = std::sqrt(unmodCheb_mom_seq.beta[i]);
-
-      if(unmodCheb_mom_seq.alpha.size() >= n_points){
-	vector<double> unmod_Cheb_points, unmod_Cheb_weights;
-	unmodCheb_mom_seq.QR_quadrature_rules(VERBOSE, n_points, tolerance, max_iter, unmod_Cheb_points, unmod_Cheb_weights);
-	for(size_t i = 0; i < unmod_Cheb_points.size(); i++)
-	  unmod_Cheb_quad_estimate += counts_hist[1]*unmod_Cheb_weights[i]/unmod_Cheb_points[i];
-      }
-
-    
-
-      std::ofstream three_term_of;
-      if (!three_term_outfile.empty()) three_term_of.open(three_term_outfile.c_str());
-      std::ostream three_term_out(three_term_outfile.empty() ? std::cout.rdbuf() : three_term_of.rdbuf());
-      three_term_out << "three_term" << '\t' << "true" << '\t' << "fitted" << '\t' 
-	  << "unmodified_Chebyshev" << '\t' << "modified_Chebyshev" << endl;
-      for(size_t i = 0; i < n_points; i++)
-	three_term_out << "alpha" << i << '\t' << true_alphas3term[i] << '\t' << fitted_alpha[i] << '\t' << unmodCheb_mom_seq.alpha[i] << '\t'
-	    << modCheb_mom_seq.alpha[i] << endl;
-
-      for(size_t i = 0; i < n_points - 1; i++)
-	three_term_out << "beta" << i + 1 << '\t' << std::sqrt(true_betas3term[i]) 
-		       << '\t' << std::sqrt(fitted_beta[i]) << '\t' << unmodCheb_mom_seq.beta[i] << '\t'
-	    << modCheb_mom_seq.beta[i] << endl;
-
-
-      std::ofstream quad_of;
-      if (!quad_outfile.empty()) quad_of.open(quad_outfile.c_str());
-      std::ostream quad_out(quad_outfile.empty() ? std::cout.rdbuf() : quad_of.rdbuf());
-      quad_out << "unmodified_Chebyshev_quad_estimate" << '\t' 
-	       << "modified_Chebyshev_quad_estimate" << endl;
-      quad_out << unmod_Cheb_quad_estimate << '\t' << mod_Cheb_quad_estimate << endl;
+      for(size_t i = 0; i < median_alpha.size(); i++)
+	out << median_alpha[i] << '\t';
+      for(size_t i = 0; i < median_beta.size() ; i++)
+	out << median_beta[i] << '\t';
+      out << estimated_lib_size << endl;
     
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////

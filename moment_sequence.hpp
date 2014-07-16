@@ -29,6 +29,10 @@ struct MomentSequence {
   MomentSequence() {}
   MomentSequence(const std::vector<double> &obs_moms);
 
+  MomentSequence(const std::vector<double> &a,
+		 const std::vector<double> &b):
+    alpha(a), beta(b) {};
+
   // Estimate 3-term recurrence
   // these will be removed from the header when they are tested
   void gw_three_term_calc(const bool VERBOSE, const size_t n_points);
@@ -42,10 +46,6 @@ struct MomentSequence {
   void full_3term_recurrence(const bool VERBOSE,
 			     std::vector<double> &full_alpha,
 			     std::vector<double> &full_beta);
-
-  void set_mean_3term_recurrence(const bool VERBOSE, 
-				 const std::vector<double> &counts_hist,
-				 const size_t bootstraps, const size_t n_points);
 
   // quadrature rules using polynomial solver
   void poly_solve_gauss_quad(const size_t n_points,
