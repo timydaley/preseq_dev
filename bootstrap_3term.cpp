@@ -60,7 +60,7 @@ resample_hist(const gsl_rng *rng,
 
         
   gsl_ran_multinomial(rng, counts_hist.size(), distinct,
-		      &distinct_counts_hist.front(),
+		      &counts_hist.front(),
 		      &sample_counts_hist.front());
     
   sample_hist.resize(counts_hist.size(), 0.0);
@@ -88,33 +88,6 @@ generate_NBD(const double mu,
      
 } 
 
-// m[j] = 'th modified moment, v[j]=j'th moment
-// monic generalized laguerre polynomial w/ k = 1/alpha,
-// p = mu*alpha/(1+ mu*alpha) : l_{j}(x)
-// orthogonal to x e^{-x}
-// l_j(x) = \sum_l=0^j j!/l! binom{1+j}{j-l} (-1)^{l+j} x^l
-// m[j] = \sum_{l=0}^j j!/l! binom{1+j}{j-l} (-1)^{l+j} v[l]
-static void
-laguerre_modified_moments(const vector<double> &orig_moments,
-			  const double mu,
-			  const double alpha,
-			  const size_t n_points,
-			  vector<double> &modified_moments){
-  modified_moments.resize(2*n_points, 0.0);
-  const double k = 1/alpha;
-  const double phi = (1.0 + alpha*mu)/(alpha*mu);
-
-  for(int n = 0; n < modified_moments.size(); n++){
-    for(int l = 0; l <= n; l++){
-      const double add_to_moment = 
-	exp(gsl_sf_lngamma(n + k + 1) - gsl_sf_lngamma(n - l + 1)
-	    - gsl_sf_lngamma(k + l + 1) + gsl_sf_lnfact(n)
-	    - gsl_sf_lnfact(l) - (n - l)*log(phi)
-	    + log(orig_moments[l]))*pow(-1, n + l);
-      modified_moments[n] += add_to_moment; 
-    } 
-  } 
-}
 
 // check 3 term recurrence to avoid non-positive elements
 // truncate if non-positive element found
@@ -151,7 +124,6 @@ main(const int argc, const char **argv) {
     size_t lib_size = 1000000;
     double tolerance = 1e-20;
     size_t max_iter = 1000;
-    size_t hist_max_terms = 1000;
     size_t bootstraps = 1000;
     double distro_alpha = 1.0;
     double distro_mu = 1.0;
@@ -165,7 +137,7 @@ main(const int argc, const char **argv) {
     OptionParser opt_parse(strip_path(argv[0]), 
 			   "", "<sorted-bed-file>");
     opt_parse.add_opt("outfile", 't', "output file name",
-		      false , three_term_outfile);
+		      false , outfile);
     opt_parse.add_opt("n_points",'p', "number of points for approximation",
 		      false, num_points);
     opt_parse.add_opt("lib_size",'l', "true library size",
@@ -254,6 +226,11 @@ main(const int argc, const char **argv) {
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////
 
+      srand(time(0) + getpid());
+      gsl_rng_env_setup();
+      gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
+      gsl_rng_set(rng, rand());
+
       vector< vector<double> > alphas, betas;
       while(alphas.size() < bootstraps){
 	vector<double> sample_hist;
@@ -274,15 +251,14 @@ main(const int argc, const char **argv) {
 	}
       
 	if(sample_moments.size()/2 >= n_points){
-
 	  MomentSequence unmodCheb_mom_seq(sample_moments);
 	  unmodCheb_mom_seq.unmodified_Chebyshev(VERBOSE);
 
 	  if(unmodCheb_mom_seq.alpha.size() >= n_points){
-	    unmod_mom_seq.alpha.resize(n_points);
-	    unmod_mom_seq.beta.resize(n_points - 1);
-	    alphas.push_back(unmod_mom_seq.alpha);
-	    betas.push_back(unmod_mom_seq.beta);
+	    unmodCheb_mom_seq.alpha.resize(n_points);
+	    unmodCheb_mom_seq.beta.resize(n_points - 1);
+	    alphas.push_back(unmodCheb_mom_seq.alpha);
+	    betas.push_back(unmodCheb_mom_seq.beta);
 	  }
 	}
       }
@@ -305,6 +281,7 @@ main(const int argc, const char **argv) {
 	median_beta.push_back(gsl_stats_median_from_sorted_data(&beta_j[0], 1, beta_j.size()));
       }
 
+      check_three_term_relation(median_alpha, median_beta);
       MomentSequence median_unmodCheb_mom_seq(median_alpha, median_beta);
 
       vector<double> points, weights;
