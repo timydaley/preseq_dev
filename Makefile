@@ -1,5 +1,5 @@
-#    Copyright (C) 2011 University of Southern California and
-#                       Andrew D. Smith and Timothy Daley
+#    Copyright (C) 2011-2104 University of Southern California and
+#                            Andrew D. Smith and Timothy Daley
 #
 #    Authors: Timothy Daley and Andrew D. Smith
 #
@@ -27,13 +27,16 @@ SMITHLAB_CPP=$(ROOT)/smithlab_cpp/
 endif
 
 
-ifndef SAMTOOLS_DIR
-SAMTOOLS_DIR=$(ROOT)/samtools/
-endif
+#ifndef SAMTOOLS_DIR
+#SAMTOOLS_DIR=$(ROOT)/samtools/
+#endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq gc_extrap bam2mr saturation_extrap test_quadrature
+PROGS = preseq 
+ifdef SAMTOOLS_DIR
+PROGS += bam2mr
+endif
 INCLUDEDIRS = $(SMITHLAB_CPP) $(SAMTOOLS_DIR)
 INCLUDEARGS = $(addprefix -I,$(INCLUDEDIRS))
 
@@ -42,16 +45,12 @@ LIBS += -lgsl -lgslcblas -lz
 CXX = g++ 
 CXXFLAGS = -Wall -fPIC -fmessage-length=50
 
-ifeq "$(shell uname)" "Darwin"
-CXXFLAGS += -arch x86_64
-endif
+KER = $(shell sysctl -n kern.osrelease | cut -d. -f1)
 
-# flags for Mavericks
 ifeq ($(shell uname),Darwin)
 CXXFLAGS+= -arch x86_64
-ifeq "$(shell if [ `sysctl -n kern.osrelease | cut -d . -f 1` -ge 13 ];\
-              then echo 'true'; fi)" "true"
-CXXFLAGS += -stdlib=libstdc++
+ifeq ($(KER), 13)
+CXXFLAGS+= -stdlib=libstdc++
 endif
 endif
 
@@ -78,7 +77,7 @@ all: $(PROGS)
 $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
           smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o RNG.o MappedRead.o)
 
-preseq: continued_fraction.o
+preseq: continued_fraction.o load_data_for_complexity.o
 
 test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
 

@@ -822,9 +822,9 @@ const double ContinuedFractionApproximation::SEARCH_STEP_SIZE = 0.05;
 
 
 // calculate cf_coeffs depending on offset
-ContinuedFractionApproximation::ContinuedFractionApproximation(const int di, const size_t mt, 
-                                                               const double ss, const double mv) :
-  diagonal_idx(di), max_terms(mt), step_size(ss), max_value(mv) {}
+ContinuedFractionApproximation::ContinuedFractionApproximation(const int di, 
+							       const size_t mt) :
+  diagonal_idx(di), max_terms(mt) {}
 
 
 static inline double
@@ -914,23 +914,23 @@ check_yield_estimates_stability(const vector<double> &estimates) {
 }
 
 
-/* Finds the optimal number of terms (i.e. degree, depth, etc.) of the
+/*
+ * Finds the optimal number of terms (i.e. degree, depth, etc.) of the
  * continued fraction by checking for stability of estimates at
  * specific points for yield.
+ * New way for searching for optimal CF
  */
-// New way for searching for optimal CF
 ContinuedFraction
-ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> &counts_hist) const {
-  //do this outside
+ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
+		                                                   &counts_hist) const {
   // ensure that we will use an underestimate
-  //  const size_t local_max_terms = max_terms - (max_terms % 2 == 1); 
- 
-  if(max_terms >= counts_hist.size()){
-    cerr << "max terms = " << max_terms << endl;
-    cerr << "hist size = " << counts_hist.size() << endl;
-  } 
-  assert(max_terms < counts_hist.size());
-  
+  // const size_t local_max_terms = max_terms - (max_terms % 2 == 1); 
+  // above stuff should be done outside
+  if(max_terms >= counts_hist.size()) {
+	  ContinuedFraction empty;
+	  return empty;
+  }
+
   // counts_sum = number of total captures
   double counts_sum  = 0.0;
   for(size_t i = 0; i < counts_hist.size(); i++)
@@ -940,13 +940,14 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
   for (size_t j = 1; j <= max_terms; j++)
     full_ps_coeffs.push_back(counts_hist[j]*pow(-1, j + 1));
 
-  ContinuedFraction full_CF(full_ps_coeffs, -1, max_terms);  
+  ContinuedFraction full_CF(full_ps_coeffs, diagonal_idx, max_terms);  
 
   // if max terms = 4, check only that degree
   if(max_terms == 4 || max_terms == 3 
      || max_terms == 5 || max_terms == 6){   
     vector<double> estimates;
-    full_CF.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
+    full_CF.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, 
+			                     estimates);
     // return the continued fraction if it is stable
     if (check_yield_estimates_stability(estimates))
       return full_CF;
@@ -962,7 +963,8 @@ ContinuedFractionApproximation::optimal_cont_frac_distinct(const vector<double> 
       ContinuedFraction curr_cf 
 	= ContinuedFraction::truncate_degree(full_CF, curr_terms);
       vector<double> estimates;
-      curr_cf.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE, estimates);
+      curr_cf.extrapolate_distinct(counts_hist, SEARCH_MAX_VAL, SEARCH_STEP_SIZE,
+			                       estimates);
           
     // return the continued fraction if it is stable
       if (check_yield_estimates_stability(estimates))

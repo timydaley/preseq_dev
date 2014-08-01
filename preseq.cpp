@@ -214,6 +214,7 @@ check_yield_estimates(const vector<double> &estimates) {
 
 void
 extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
+		 const unsigned long int ran_seed,
                  const size_t bootstraps, const size_t orig_max_terms,
                  const int diagonal, const double bin_step_size,
                  const double max_extrapolation, const size_t max_iter,
@@ -225,7 +226,7 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
   srand(time(0) + getpid());
   gsl_rng_env_setup();
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
-  gsl_rng_set(rng, rand());
+  gsl_rng_set(rng, ran_seed);
 
   double vals_sum = 0.0;
   for(size_t i = 0; i < orig_hist.size(); i++)
@@ -331,6 +332,7 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
 
 static bool
 extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
+		       const unsigned long int ran_seed,
                        size_t max_terms, const int diagonal,
                        const double step_size, 
                        const double max_extrapolation,
@@ -340,7 +342,7 @@ extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
   srand(time(0) + getpid());
   gsl_rng_env_setup();
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
-  gsl_rng_set(rng, rand());
+  gsl_rng_set(rng, ran_seed);
 
 
   yield_estimate.clear();
@@ -505,6 +507,8 @@ lc_extrap(const int argc, const char **argv) {
     int diagonal = 0;
     double c_level = 0.95;
     double dupl_level = 0.5;
+    // if ran_seed is not set, set it to random #
+    unsigned long int ran_seed = rand();
       
     /* FLAGS */
     bool VERBOSE = false;
@@ -523,6 +527,8 @@ lc_extrap(const int argc, const char **argv) {
                            "", "<sorted-bed-file>");
     opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
                       false , outfile);
+    opt_parse.add_opt("ran_seed", 'r', "seed to set random number generation",
+		      false, ran_seed);
     opt_parse.add_opt("extrap",'e',"maximum extrapolation "
                       "(default: " + toa(max_extrapolation) + ")",
                       false, max_extrapolation);
@@ -705,8 +711,9 @@ lc_extrap(const int argc, const char **argv) {
 
     if(SINGLE_ESTIMATE){
       bool SINGLE_ESTIMATE_SUCCESS =
-        extrap_single_estimate(VERBOSE, counts_hist, orig_max_terms, 
-                               diagonal, step_size, max_extrapolation, 
+        extrap_single_estimate(VERBOSE, counts_hist, ran_seed,
+			       orig_max_terms, diagonal, 
+			       step_size, max_extrapolation, 
                                yield_estimates);
       // IF FAILURE, EXIT
       if(!SINGLE_ESTIMATE_SUCCESS)
@@ -735,9 +742,10 @@ lc_extrap(const int argc, const char **argv) {
       const size_t max_iter = 4*bootstraps;
 
       vector<vector <double> > bootstrap_estimates;
-      extrap_bootstrap(VERBOSE, counts_hist, bootstraps, orig_max_terms,
-                       diagonal, step_size, max_extrapolation, max_iter,
-                       bootstrap_estimates);
+      extrap_bootstrap(VERBOSE, counts_hist, ran_seed,
+		       bootstraps, orig_max_terms,
+                       diagonal, step_size, max_extrapolation, 
+		       max_iter, bootstrap_estimates);
 
 
       /////////////////////////////////////////////////////////////////////
@@ -797,6 +805,9 @@ gc_extrap(const int argc, const char **argv) {
     bool NO_SEQUENCE = false;
     double c_level = 0.95;
 
+    // if ran_seed is not set, set it to random #
+    unsigned long int ran_seed = rand();
+
     // ********* GET COMMAND LINE ARGUMENTS  FOR GC EXTRAP **********
     OptionParser opt_parse(strip_path(argv[1]),
                            "", "<sorted-mapped-read-file>");
@@ -805,6 +816,8 @@ gc_extrap(const int argc, const char **argv) {
     opt_parse.add_opt("max_width", 'w', "max fragment length, "
                       "set equal to read length for single end reads",
                       false, max_width);
+    opt_parse.add_opt("ran_seed", 'r', "seed to set random number generation",
+		      false, ran_seed);
     opt_parse.add_opt("bin_size", 'b', "bin size "
                       "(default: " + toa(bin_size) + ")",
                       false, bin_size);
@@ -949,7 +962,8 @@ gc_extrap(const int argc, const char **argv) {
     if (SINGLE_ESTIMATE) {
       
       bool SINGLE_ESTIMATE_SUCCESS =
-        extrap_single_estimate(VERBOSE, coverage_hist, orig_max_terms, diagonal,
+        extrap_single_estimate(VERBOSE, coverage_hist, ran_seed,
+			       orig_max_terms, diagonal,
                                bin_step_size, max_extrapolation/bin_size,
                                coverage_estimates);
       
@@ -981,8 +995,10 @@ gc_extrap(const int argc, const char **argv) {
       const size_t max_iter = 4*bootstraps;
       
       vector<vector <double> > bootstrap_estimates;
-      extrap_bootstrap(VERBOSE, coverage_hist, bootstraps, orig_max_terms,
-                       diagonal, bin_step_size, max_extrapolation/bin_size,
+      extrap_bootstrap(VERBOSE, coverage_hist, ran_seed,
+		       bootstraps, orig_max_terms,
+                       diagonal, bin_step_size, 
+		       max_extrapolation/bin_size,
                        max_iter, bootstrap_estimates);
       
       
@@ -1039,6 +1055,9 @@ c_curve(const int argc, const char **argv) {
 
     size_t upper_limit = 0;
     double step_size = 1e6;
+
+    // if ran_seed is not set, set it to random #
+    unsigned long int ran_seed = rand();
   
 #ifdef HAVE_SAMTOOLS
     bool BAM_FORMAT_INPUT = false;
@@ -1050,6 +1069,8 @@ c_curve(const int argc, const char **argv) {
                            "", "<sorted-bed-file>");
     opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
                       false , outfile);
+    opt_parse.add_opt("ran_seed", 'r', "seed to set random number generation",
+		      false, ran_seed);
     opt_parse.add_opt("step",'s',"step size in extrapolations "
                       "(default: " + toa(step_size) + ")",
                       false, step_size);
@@ -1097,7 +1118,7 @@ c_curve(const int argc, const char **argv) {
     gsl_rng_env_setup();
     gsl_rng *rng = gsl_rng_alloc(gsl_rng_default); // use default type
     srand(time(0) + getpid()); //give the random fxn a new seed
-    gsl_rng_set(rng, rand()); //initialize random number generator with the seed
+    gsl_rng_set(rng, ran_seed); //initialize random number generator with the seed
 
     vector<double> counts_hist;
     size_t n_reads = 0;
