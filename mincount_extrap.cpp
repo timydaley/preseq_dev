@@ -406,7 +406,7 @@ main(const int argc, const char **argv) {
     bool SINGLE_ESTIMATE = false;
 
     
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
     bool BAM_FORMAT_INPUT = false;
     size_t MAX_SEGMENT_LENGTH = 5000;
 #endif
@@ -434,7 +434,7 @@ main(const int argc, const char **argv) {
     //	     orig_max_terms);
     opt_parse.add_opt("verbose", 'v', "print more information", 
 		      false, VERBOSE);
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
     opt_parse.add_opt("bam", 'B', "input is in BAM format", 
 		      false, BAM_FORMAT_INPUT);
     opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
