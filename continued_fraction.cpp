@@ -1243,19 +1243,10 @@ check_mincount_estimates_stability(const vector<double> &estimates,
   // is below the initial distinct per step_size
   for (size_t i = 1; i < estimates.size(); ++i){
     if(!isfinite(estimates[i])){
-      //    cerr << "not finite at " << i << "\t" << estimates[i] << endl;
       return false;
     }
     if ((estimates[i] < estimates[i - 1]) ||
         (estimates[i] - estimates[i - 1] > max_change_per_time_step)){
-      /*     if(estimates[i] < estimates[i - 1])
-	cerr << i - 1 << "th estimate (" << estimates[i-1] 
-	     << ") greater than " << i << "th (" << estimates[i] << ")" << endl;
-      if(estimates[i] - estimates[i - 1] > max_change_per_time_step)
-	cerr << "change is more than max_change_per_time_step, change = "
-	     << estimates[i] - estimates[i - 1] 
-	     << ", max_change_per_time_step = " << max_change_per_time_step << endl;
-      */
       return false;
     }
   }
@@ -1267,7 +1258,7 @@ check_mincount_estimates_stability(const vector<double> &estimates,
 ContinuedFraction
 ContinuedFractionApproximation::optimal_cont_frac_mincount(const vector<double> &counts_hist,
                                                            const size_t mincount,
-const int order) const {
+							   const int order) const {
   
 
   // counts_sum = number of total captures
@@ -1278,13 +1269,6 @@ const int order) const {
 
   vector<double> ps_coeffs;
   construct_mincount_ps_coeffs(counts_hist, max_terms, mincount, ps_coeffs);
-
-  /*
-  cerr << "ps_coeffs = " << endl;
-  for(size_t i = 0; i < ps_coeffs.size(); i++)
-    cerr << ps_coeffs[i] << endl;
-  cerr << endl;
-  */
 
   // if max_terms is too small, unacceptable extrapolation
   if(max_terms < MIN_ALLOWED_DEGREE + abs(order))

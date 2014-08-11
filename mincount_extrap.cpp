@@ -34,6 +34,7 @@
 #include <smithlab_os.hpp>
 
 #include "continued_fraction.hpp"
+#include "load_data_for_complexity.hpp"
 
 using std::string;
 using std::vector;
@@ -46,225 +47,34 @@ using std::fixed;
 using std::setprecision;
 using std::tr1::unordered_map;
 
-/*
- * This code is used to deal with read data in BAM format.
- */
-#ifdef HAVE_BAMTOOLS
-#include "api/BamReader.h"
-#include "api/BamAlignment.h"
 
-using BamTools::BamAlignment;
-using BamTools::SamHeader;
-using BamTools::RefVector;
-using BamTools::BamReader;
-using BamTools::RefData;
-
-static SimpleGenomicRegion
-BamToSimpleGenomicRegion(const unordered_map<size_t, string> &chrom_lookup,
-			 const BamAlignment &ba) {
-  const unordered_map<size_t, string>::const_iterator
-    the_chrom(chrom_lookup.find(ba.RefID));
-  if (the_chrom == chrom_lookup.end())
-    throw SMITHLABException("no chrom with id: " + toa(ba.RefID));
-  
-  const string chrom = the_chrom->second;
-  const size_t start = ba.Position;
-  const size_t end = start + ba.Length;
-  
-  return SimpleGenomicRegion(chrom, start, end);
-}
-
-
-static size_t
-load_values_BAM_se(const string &input_file_name, vector<double> &values) {
-  
-  BamReader reader;
-  reader.Open(input_file_name);
-
-  // Get header and reference
-  string header = reader.GetHeaderText();
-  RefVector refs = reader.GetReferenceData();
-
-  unordered_map<size_t, string> chrom_lookup;
-  for (size_t i = 0; i < refs.size(); ++i)
-    chrom_lookup[i] = refs[i].RefName;
-
-  size_t n_reads = 1;
-  values.push_back(1.0);
-
-  SimpleGenomicRegion prev;
-  BamAlignment bam;
-  while (reader.GetNextAlignment(bam)) {
-    SimpleGenomicRegion r(BamToSimpleGenomicRegion(chrom_lookup, bam));
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-    if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-      values.push_back(1.0);
-    else values.back()++;
-    ++n_reads;
-    prev.swap(r);
-  }
-  reader.Close();
-  return n_reads;
-}
-
-static size_t
-load_values_BAM_pe(const string &input_file_name, vector<double> &values) {
-
-  BamReader reader;
-  reader.Open(input_file_name);
-
-  // Get header and reference
-  string header = reader.GetHeaderText();
-  RefVector refs = reader.GetReferenceData();
-
-  unordered_map<size_t, string> chrom_lookup;
-  for (size_t i = 0; i < refs.size(); ++i)
-    chrom_lookup[i] = refs[i].RefName;
-
-  size_t n_reads = 1;
-  values.push_back(1.0);
-
-  SimpleGenomicRegion prev;
-  BamAlignment bam;
-  while (reader.GetNextAlignment(bam)) {
-    SimpleGenomicRegion r(BamToSimpleGenomicRegion(chrom_lookup, bam));
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-    if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-      values.push_back(1.0);
-    else values.back()++;
-    ++n_reads;
-    prev.swap(r);
-  }
-  reader.Close();
-  return n_reads;
-}
-#endif
-
-
-static size_t
-load_values_BED_se(const string input_file_name, vector<double> &values) {
-  
-  std::ifstream in(input_file_name.c_str());
-  if (!in)
-    throw SMITHLABException("problem opening file: " + input_file_name);
-  
-  SimpleGenomicRegion r, prev;
-  if (!(in >> prev))
-    throw SMITHLABException("problem reading from: " + input_file_name);
-  
-  size_t n_reads = 1;
-  values.push_back(1.0);
-  while (in >> r) {
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-
-    if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-      values.push_back(1.0);
-    else values.back()++;
-    ++n_reads;
-    prev.swap(r);
-  }
-  return n_reads;
-}
-
-static size_t
-load_values_BED_pe(const string input_file_name, vector<double> &values) {
-
- std::ifstream in(input_file_name.c_str());
- if (!in)
-   throw "problem opening file: " + input_file_name;
-
- GenomicRegion r, prev;
- if (!(in >> prev))
-   throw "problem reading from: " + input_file_name;
-
- size_t n_reads = 1;
- values.push_back(1.0);
- while (in >> r) {
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start() 
-	&& r.get_end() < prev.get_end())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-    if (!r.same_chrom(prev) || r.get_start() != prev.get_start() 
-	|| r.get_end() != prev.get_end())
-     values.push_back(1.0);
-   else values.back()++;
-   ++n_reads;
-   prev.swap(r);
- }
- return n_reads;
-}
-
-static size_t
-load_values(const string input_file_name, vector<double> &values) {
-
-  std::ifstream in(input_file_name.c_str());
-  if (!in)
-    throw SMITHLABException("problem opening file: " + input_file_name);
-
-  vector<double> full_values;
-  size_t n_reads = 0;
-  static const size_t buffer_size = 10000; // Magic!
-  while(!in.eof()){
-    char buffer[buffer_size];
-    in.getline(buffer, buffer_size);
-    double val = atof(buffer);
-    if(val > 0.0)
-      full_values.push_back(val);
-    if(full_values.back() < 0.0){
-      cerr << "INVALID INPUT\t" << buffer << endl;
-      throw SMITHLABException("ERROR IN INPUT");
-    }
-    ++n_reads;
-    in.peek();
-  }
-  in.close();
-  if(full_values.back() == 0)
-    full_values.pop_back();
-
-  values.swap(full_values);
-  return n_reads;
-}
-
+// vals_hist[j] = n_{j} = # (counts = j)
+// vals_hist_distinct_counts[k] = kth index j s.t. vals_hist[j] > 0
+// stores kth index of vals_hist that is positive
+// distinct_counts_hist[k] = vals_hist[vals_hist_distinct_counts[k]]
+// stores the kth positive value of vals_hist
 void
-resample_hist(const gsl_rng *rng, const vector<double> &vals_hist,
-	      const double total_sampled_reads,
-	      double expected_sample_size,
-	      vector<double> &sample_hist) {
-  
-  const size_t hist_size = vals_hist.size();
-  const double vals_mean = total_sampled_reads/expected_sample_size;
-  
-  sample_hist = vector<double>(hist_size, 0.0);
-  vector<unsigned int> curr_sample(hist_size);
-  double remaining = total_sampled_reads;
-  
-  while (remaining > 0) {
-    
-    // get a new sample
-    expected_sample_size = max(1.0, (remaining/vals_mean)/2.0);
-    gsl_ran_multinomial(rng, hist_size, 
-			static_cast<unsigned int>(expected_sample_size),
-			&vals_hist.front(), &curr_sample.front());
-    
-    // see how much we got
-    double inc = 0.0;
-    for (size_t i = 0; i < hist_size; ++i)
-      inc += i*curr_sample[i];
-    
-    // only add to histogram if sampled reads < remaining reads
-    if (inc <= remaining) {
-      for (size_t i = 0; i < hist_size; i++)
-	sample_hist[i] += static_cast<double>(curr_sample[i]);
-      // update the amount we still need to get
-      remaining -= inc;
-    }
-  }
+resample_hist(const gsl_rng *rng, const vector<size_t> &vals_hist_distinct_counts,
+              const vector<double> &distinct_counts_hist,
+              vector<double> &out_hist) {
+
+  vector<unsigned int> sample_distinct_counts_hist(distinct_counts_hist.size(), 0);
+
+  const unsigned int distinct =
+    static_cast<unsigned int>(accumulate(distinct_counts_hist.begin(),
+                                         distinct_counts_hist.end(), 0.0));
+
+  gsl_ran_multinomial(rng, distinct_counts_hist.size(), distinct,
+                      &distinct_counts_hist.front(),
+                      &sample_distinct_counts_hist.front());
+
+  out_hist.clear();
+  out_hist.resize(vals_hist_distinct_counts.back() + 1, 0.0);
+  for(size_t i = 0; i < sample_distinct_counts_hist.size(); i++)
+    out_hist[vals_hist_distinct_counts[i]] =
+      static_cast<double>(sample_distinct_counts_hist[i]);
 }
+
 
 static double
 sample_count_reads_w_mincount(const gsl_rng *rng,
@@ -301,7 +111,7 @@ check_mincount_estimates_stability(const vector<double> &estimates,
   // make sure that the estimate is increasing in the time_step and
   // is below the initial distinct per step_size
   for (size_t i = 1; i < estimates.size(); ++i){
-    if(!finite(estimates[i])){
+    if(!std::isfinite(estimates[i])){
       return false;
     }
     if ((estimates[i] < estimates[i - 1]) ||
@@ -315,9 +125,9 @@ check_mincount_estimates_stability(const vector<double> &estimates,
 
 
 void
-estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_values, 
+estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_hist, 
 		    const size_t bootstraps, const size_t orig_max_terms, 
-		    const int order, const double step_size, 
+		    const int diagonal, const double step_size, 
 		    const double max_extrapolation, const size_t mincount,
 		    vector< vector<double> > &full_estimates) {
   // clear returning vectors
@@ -329,31 +139,30 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_values,
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
   gsl_rng_set(rng, rand()); 
 
-  const size_t max_observed_count = 
-    static_cast<size_t>(*std::max_element(orig_values.begin(), 
-					  orig_values.end()));
+
+  const double initial_observed 
+    = accumulate(orig_hist.begin() + mincount, orig_hist.end(), 0.0);
+
+
+  vector<size_t> orig_hist_distinct_counts;
+  vector<double> distinct_orig_hist;
+  for (size_t i = 0; i < orig_hist.size(); i++){
+    if (orig_hist[i] > 0) {
+      orig_hist_distinct_counts.push_back(i);
+      distinct_orig_hist.push_back(orig_hist[i]);
+    }
+  }
+  
+  double vals_sum = 0.0;
+  for(size_t i = 0; i < orig_hist.size(); i++)
+    vals_sum += i*orig_hist[i];
     
-  vector<double> orig_hist(max_observed_count + 1, 0.0);
-  for (size_t i = 0; i < orig_values.size(); ++i)
-    ++orig_hist[static_cast<size_t>(orig_values[i])];
-  
-  const double vals_sum = accumulate(orig_values.begin(), orig_values.end(), 0.0);
-  
   for (size_t iter = 0; 
        (iter < 2*bootstraps && full_estimates.size() < bootstraps); ++iter) {
     
     vector<double> mincount_vector;
     vector<double> hist;
-    resample_hist(rng, orig_hist, vals_sum,
-		  static_cast<double>(orig_values.size()), hist);
-
-    /*   cerr << "sampled hist:" << endl;
-    for(size_t i = 0; i <= std::min(hist.size(), orig_max_terms); i++)
-      if(hist[i] > 0)
-	cerr << i << "\t" << hist[i] << endl;
-    */
-
-    const double initial_observed = accumulate(hist.begin() + mincount, hist.end(), 0.0);
+    resample_hist(rng, orig_hist_distinct_counts, distinct_orig_hist, hist);
     
     //resize boot_hist to remove excess zeros
     while (hist.back() == 0)
@@ -375,7 +184,7 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_values,
     size_t upper_limit = static_cast<size_t>(vals_sum);
     size_t step = static_cast<size_t>(step_size);
     size_t sample = step;
-    while(sample < upper_limit){
+    while(sample <= upper_limit){
       mincount_vector.push_back(sample_count_reads_w_mincount(rng, umis, sample, mincount));
       sample += step;
     }
@@ -390,10 +199,10 @@ estimates_bootstrap(const bool VERBOSE, const vector<double> &orig_values,
     max_terms = max_terms - (max_terms % 2 == 0);
 
     const ContinuedFractionApproximation 
-      mincount_cfa(order, max_terms, step_size, max_extrapolation);
+      mincount_cfa(diagonal, max_terms);
     
     const ContinuedFraction 
-      mincount_cf(mincount_cfa.optimal_cont_frac_mincount(hist, mincount, order));
+      mincount_cf(mincount_cfa.optimal_cont_frac_mincount(hist, mincount, diagonal));
 
 
     //extrapolate the curve start
@@ -450,13 +259,107 @@ return_median_and_ci(const vector<vector<double> > &estimates,
   }
 }
 
+static bool
+mincount_single_estimate(const bool VERBOSE, vector<double> &hist,
+                       size_t orig_max_terms, const int diagonal,
+                       const double step_size, 
+                       const double max_extrapolation,
+		       const size_t mincount,
+                       vector<double> &mincount_estimate) {
+
+  //setup rng
+  srand(time(0) + getpid());
+  gsl_rng_env_setup();
+  gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
+  gsl_rng_set(rng, rand());
+
+
+  mincount_estimate.clear();
+  double vals_sum = 0.0;
+  for(size_t i = 0; i < hist.size(); i++)
+    vals_sum += i*hist[i];
+  const double initial_observed 
+    = accumulate(hist.begin() + mincount, hist.end(), 0.0);
+
+  //construct umi vector to sample from
+  vector<size_t> umis;
+  size_t umi = 1;
+  for(size_t i = 1; i < hist.size(); i++){
+    for(size_t j = 0; j < hist[i]; j++){
+      for(size_t k = 0; k < i; k++)
+        umis.push_back(umi);
+      umi++;
+    }
+  }
+  assert(umis.size() == static_cast<size_t>(vals_sum));
+
+
+    // compute complexity curve by random sampling w/out replacement
+  size_t upper_limit = static_cast<size_t>(vals_sum);
+  size_t step = static_cast<size_t>(step_size);
+  size_t sample = step;
+  while(sample <= upper_limit){
+    mincount_estimate.push_back(sample_count_reads_w_mincount(rng, umis, sample, mincount));
+    sample += step;
+  }
+
+    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+  size_t counts_before_first_zero = 1;
+  while (counts_before_first_zero < hist.size() &&
+	 hist[counts_before_first_zero] > 0)
+    ++counts_before_first_zero;   
+
+  size_t max_terms = std::min(orig_max_terms, counts_before_first_zero - mincount);
+  max_terms = max_terms - (max_terms % 2 == 0);
+
+  const ContinuedFractionApproximation 
+    mincount_cfa(diagonal, max_terms);
+    
+  const ContinuedFraction 
+    mincount_cf(mincount_cfa.optimal_cont_frac_mincount(hist, mincount, diagonal));
+
+
+    //extrapolate the curve start
+  if (mincount_cf.is_valid()){
+      //  cerr << "valid" << endl;
+    double sample_size = static_cast<double>(sample);
+    while(sample_size <= max_extrapolation){
+      double t = (sample_size - vals_sum)/vals_sum;
+      assert(t >= 0.0);
+      mincount_estimate.push_back(initial_observed + t*mincount_cf(t));
+      sample_size += step_size;
+    }
+  }
+  else{
+    // FAIL!
+    // lower_cf unacceptable, need to bootstrap to obtain estimates
+    return false;
+  }
+
+  if (VERBOSE) {
+    if(mincount_cf.offset_coeffs.size() > 0){
+      cerr << "CF_OFFSET_COEFF_ESTIMATES" << endl;
+      copy(mincount_cf.offset_coeffs.begin(), mincount_cf.offset_coeffs.end(),
+           std::ostream_iterator<double>(cerr, "\n"));
+    }
+    if(mincount_cf.cf_coeffs.size() > 0){
+      cerr << "CF_COEFF_ESTIMATES" << endl;
+      copy(mincount_cf.cf_coeffs.begin(), mincount_cf.cf_coeffs.end(),
+           std::ostream_iterator<double>(cerr, "\n"));
+    }
+  }
+
+  // SUCCESS!!
+  return true;
+}
+
 
 static void
 write_predicted_curve(const string outfile, const double c_level,
 		      const double step_size,
-		      const vector<double> &median_yield_estimates,
-		      const vector<double> &yield_lower_ci,
-		      const vector<double> &yield_upper_ci) {
+		      const vector<double> &median_mincount_estimates,
+		      const vector<double> &mincount_lower_ci,
+		      const vector<double> &mincount_upper_ci) {
   std::ofstream of;
   if (!outfile.empty()) of.open(outfile.c_str());
   std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
@@ -469,10 +372,10 @@ write_predicted_curve(const string outfile, const double c_level,
   out.precision(1);
   
   out << 0 << '\t' << 0 << '\t' << 0 << '\t' << 0 << endl;
-  for (size_t i = 0; i < median_yield_estimates.size(); ++i)
+  for (size_t i = 0; i < median_mincount_estimates.size(); ++i)
     out << (i + 1)*step_size << '\t' 
-	<< median_yield_estimates[i] << '\t'
-	<< yield_lower_ci[i] << '\t' << yield_upper_ci[i] << endl;
+	<< median_mincount_estimates[i] << '\t'
+	<< mincount_lower_ci[i] << '\t' << mincount_upper_ci[i] << endl;
 }
 
 
@@ -482,7 +385,7 @@ main(const int argc, const char **argv) {
 
   try {
     
-    const size_t MIN_REQUIRED_COUNTS = 8;
+    //   const size_t MIN_REQUIRED_COUNTS = 8;
 
     /* FILES */
     string outfile;
@@ -491,7 +394,7 @@ main(const int argc, const char **argv) {
     double max_extrapolation = 1.0e10;
     double step_size = 1e6;
     size_t bootstraps = 100;
-    int order = 0;
+    int diagonal = 0;
     double c_level = 0.95;
     size_t mincount = 2;
     
@@ -499,15 +402,19 @@ main(const int argc, const char **argv) {
     bool VERBOSE = false;
     bool VALS_INPUT = false;
     bool PAIRED_END = false;
+    bool HIST_INPUT = false;
+    bool SINGLE_ESTIMATE = false;
+
     
 #ifdef HAVE_BAMTOOLS
     bool BAM_FORMAT_INPUT = false;
+    size_t MAX_SEGMENT_LENGTH = 5000;
 #endif
     
     /**************** GET COMMAND LINE ARGUMENTS ***********************/
     OptionParser opt_parse(strip_path(argv[0]), 
 			   "", "<sorted-bed-file>");
-    opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
+    opt_parse.add_opt("output", 'o', "mincount output file (default: stdout)",
 		      false , outfile);
     opt_parse.add_opt("extrap",'e',"maximum extrapolation "
 		      "(default: " + toa(max_extrapolation) + ")",
@@ -530,12 +437,23 @@ main(const int argc, const char **argv) {
 #ifdef HAVE_BAMTOOLS
     opt_parse.add_opt("bam", 'B', "input is in BAM format", 
 		      false, BAM_FORMAT_INPUT);
+    opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
+                      "paired end bam reads (default: "
+                      + toa(MAX_SEGMENT_LENGTH) + ")",
+                      false, MAX_SEGMENT_LENGTH);
 #endif
     opt_parse.add_opt("pe", 'P', "input is paired end read file",
 		      false, PAIRED_END);
     opt_parse.add_opt("vals", 'V', 
 		      "input is a text file containing only the observed counts",
 		      false, VALS_INPUT);
+    opt_parse.add_opt("hist", 'H',
+                      "input is a text file containing the observed histogram",
+                      false, HIST_INPUT);
+    opt_parse.add_opt("quick",'Q',
+                      "quick mode, estimate mincount without bootstrapping for confidence intervals",
+                      false, SINGLE_ESTIMATE);
+
     
     vector<string> leftover_args;
     opt_parse.parse(argc, argv, leftover_args);
@@ -557,56 +475,135 @@ main(const int argc, const char **argv) {
     }
     const string input_file_name = leftover_args.front();
     /******************************************************************/
-    
-    vector<double> values;
-    if(VALS_INPUT)
-      load_values(input_file_name, values);
-#ifdef HAVE_BAMTOOLS
-    else if (BAM_FORMAT_INPUT && PAIRED_END)
-      load_values_BAM_pe(input_file_name, values);
-    else if(BAM_FORMAT_INPUT)
-      load_values_BAM_se(input_file_name, values);
-#endif
-    else if(PAIRED_END)
-      load_values_BED_pe(input_file_name, values);  
-    else
-      load_values_BED_se(input_file_name, values);
-    
-    // JUST A SANITY CHECK
-    const double values_sum = accumulate(values.begin(), values.end(), 0.0);
+
         
-    const size_t max_observed_count = 
-      static_cast<size_t>(*std::max_element(values.begin(), values.end()));
+    vector<double> counts_hist;
+    size_t n_reads = 0;
 
-    // catch if all reads are distinct
-    if (max_observed_count < MIN_REQUIRED_COUNTS)
-      throw SMITHLABException("sample appears too uniform");
-    
-    // BUILD THE HISTOGRAM
-    vector<double> counts_hist(max_observed_count + 1, 0.0);
-    for (size_t i = 0; i < values.size(); ++i)
-      ++counts_hist[static_cast<size_t>(values[i])];
+    // LOAD VALUES
+    if(HIST_INPUT){
+      if(VERBOSE)
+        cerr << "HIST_INPUT" << endl;
+      n_reads = load_histogram(input_file_name, counts_hist);
+    }
+    else if(VALS_INPUT){
+      if(VERBOSE)
+        cerr << "VALS_INPUT" << endl;
+      n_reads = load_counts(input_file_name, counts_hist);
+    }
+#ifdef HAVE_SAMTOOLS
+    else if (BAM_FORMAT_INPUT && PAIRED_END){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BAM_INPUT" << endl;
+      const size_t MAX_READS_TO_HOLD = 5000000;
+      size_t n_paired = 0;
+      size_t n_mates = 0;
+      n_reads = load_counts_BAM_pe(VERBOSE, input_file_name, 
+                                   MAX_SEGMENT_LENGTH, 
+                                   MAX_READS_TO_HOLD, n_paired, 
+                                   n_mates, counts_hist);
+      if(VERBOSE){
+        cerr << "MERGED PAIRED END READS = " << n_paired << endl;
+        cerr << "MATES PROCESSED = " << n_mates << endl;
+      }
+    }
+    else if(BAM_FORMAT_INPUT){
+      if(VERBOSE)
+        cerr << "BAM_INPUT" << endl;
+      n_reads = load_counts_BAM_se(input_file_name, counts_hist);
+    }
+#endif
+    else if(PAIRED_END){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BED_INPUT" << endl;
+      n_reads = load_counts_BED_pe(input_file_name, counts_hist);
+    }
+    else{ // default is single end bed file
+      if(VERBOSE)
+        cerr << "BED_INPUT" << endl;
+      n_reads = load_counts_BED_se(input_file_name, counts_hist);
+    }
 
-    const double initial_observed =
-      accumulate(counts_hist.begin() + mincount, counts_hist.end(), 0.0);
+    const size_t max_observed_count = counts_hist.size() - 1;
+    //   const double distinct_reads = accumulate(counts_hist.begin(),
+    //                                       counts_hist.end(), 0.0);
 
+    // for large initial experiments need to adjust step size
+    // otherwise small relative steps do not account for variance
+    // in extrapolation
+    if(step_size < (n_reads/20)){
+      step_size = std::max(step_size, 
+                           step_size*round(n_reads/(20*step_size)));
+      if(VERBOSE)
+        cerr << "ADJUSTED_STEP_SIZE = " << step_size << endl;
+    }
+
+    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+    size_t counts_before_first_zero = 1;
+    while (counts_before_first_zero < counts_hist.size() &&
+           counts_hist[counts_before_first_zero] > 0)
+      ++counts_before_first_zero;
+
+    orig_max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
+    orig_max_terms = orig_max_terms - (orig_max_terms % 2 == 1);
+
+    const double initial_observed 
+      = accumulate(counts_hist.begin() + mincount, counts_hist.end(), 0.0);
+
+    double values_sum = 0.0;
+    for(size_t i = 0; i < counts_hist.size(); i++)
+	  values_sum += i*counts_hist[i];
+
+
+    const size_t distinct_counts =
+      static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
+                                        bind2nd(std::greater<double>(), 0.0)));
     if (VERBOSE)
-      cerr << "TOTAL READS      = " << values_sum << endl
-	   << "DISTINCT READS   = " << values.size() << endl
-	   << "INITIAL OBSERVED = " << initial_observed << endl
-	   << "MAX COUNT        = " << max_observed_count << endl
-	   << "COUNTS OF 1      = " << counts_hist[1] << endl
-	   << "MAX TERMS        = " << orig_max_terms << endl;
-    
+      cerr << "TOTAL READS      = " << n_reads << endl
+           << "INITIAL MINCOUNT = " << initial_observed << endl
+           << "DISTINCT COUNTS  = " << distinct_counts << endl
+           << "MAX COUNT        = " << max_observed_count << endl
+           << "COUNTS OF 1      = " << counts_hist[1] << endl
+           << "MAX TERMS        = " << orig_max_terms << endl;
+
     if (VERBOSE) {
       // OUTPUT THE ORIGINAL HISTOGRAM
-      
       cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
       for (size_t i = 0; i < counts_hist.size(); i++)
-	if (counts_hist[i] > 0)
-	  cerr << i << '\t' << counts_hist[i] << endl;
+        if (counts_hist[i] > 0)
+          cerr << i << '\t' << static_cast<size_t>(counts_hist[i]) << endl;
       cerr << endl;
-      
+    }
+
+
+    if(SINGLE_ESTIMATE){
+      vector<double> mincount_estimates;
+      bool SINGLE_ESTIMATE_SUCCESS = 
+	mincount_single_estimate(VERBOSE, counts_hist, 
+				  orig_max_terms, diagonal, 
+				  step_size, max_extrapolation, 
+				  mincount,
+				  mincount_estimates);
+
+     // IF FAILURE, EXIT
+      if(!SINGLE_ESTIMATE_SUCCESS)
+        throw SMITHLABException("SINGLE ESTIMATE FAILED, NEED TO RUN "
+                                "FULL MODE FOR ESTIMATES");
+
+      std::ofstream of;
+      if (!outfile.empty()) of.open(outfile.c_str());
+      std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
+
+      out << "TOTAL_READS\tEXPECTED_DISTINCT" << endl;
+
+      out.setf(std::ios_base::fixed, std::ios_base::floatfield);
+      out.precision(1);
+
+      out << 0 << '\t' << 0 << endl;
+      for (size_t i = 0; i < mincount_estimates.size(); ++i)
+        out << (i + 1)*step_size << '\t'
+            << mincount_estimates[i] << endl;
+
     }
     
     /////////////////////////////////////////////////////////////////////
@@ -614,43 +611,40 @@ main(const int argc, const char **argv) {
     /////////////////////////////////////////////////////////////////////
     // BOOTSTRAPS
 
-    //    if(bootstraps < 10)
-    //  throw SMITHLABException("too few bootstraps, must be at least 10");
-
-    if (VERBOSE) 
-      cerr << "[BOOTSTRAP ESTIMATES]" << endl;
+    else{
+      if (VERBOSE) 
+	cerr << "[BOOTSTRAP ESTIMATES]" << endl;
       
-    vector<vector <double> > yield_estimates;
-    vector< vector<double> > sat_estimates;
-    vector<double> lower_libsize, upper_libsize;
-    estimates_bootstrap(VERBOSE, values,  bootstraps, orig_max_terms,
-			order, step_size, max_extrapolation, 
-			mincount, yield_estimates);
+      vector<vector <double> > mincount_estimates;
+      estimates_bootstrap(VERBOSE, counts_hist,  bootstraps, orig_max_terms,
+			  diagonal, step_size, max_extrapolation, 
+			  mincount, mincount_estimates);
       
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////
     // BOOTSTRAPS
-    if (VERBOSE)
-      cerr << "[COMPUTING CONFIDENCE INTERVALS]" << endl;
+      if (VERBOSE)
+	cerr << "[COMPUTING CONFIDENCE INTERVALS]" << endl;
       
-    vector<double> median_yield_estimates;
-    vector<double> yield_upper_ci, yield_lower_ci;
-    return_median_and_ci(yield_estimates, 1.0 - c_level, 
-			 initial_observed, values_sum, step_size,
-			 median_yield_estimates, 
-			 yield_lower_ci, yield_upper_ci);
+      vector<double> median_mincount_estimates;
+      vector<double> mincount_upper_ci, mincount_lower_ci;
+      return_median_and_ci(mincount_estimates, 1.0 - c_level, 
+			   initial_observed, values_sum, step_size,
+			   median_mincount_estimates, 
+			   mincount_lower_ci, mincount_upper_ci);
 
     
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////
-    if (VERBOSE) 
-      cerr << "[WRITING OUTPUT]" << endl;
+      if (VERBOSE) 
+	cerr << "[WRITING OUTPUT]" << endl;
     
-    write_predicted_curve(outfile, c_level, step_size,
-			  median_yield_estimates,
-			  yield_lower_ci, yield_upper_ci);
+      write_predicted_curve(outfile, c_level, step_size,
+			    median_mincount_estimates,
+			    mincount_lower_ci, mincount_upper_ci);
+    }
       
   }
   catch (SMITHLABException &e) {
