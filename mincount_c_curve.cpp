@@ -31,235 +31,19 @@
 #include "smithlab_utils.hpp"
 #include "GenomicRegion.hpp"
 
+#include "load_data_for_complexity.hpp"
+
 
 using std::string;
 using std::vector;
 using std::endl;
 using std::cerr;
-using std::max;
 
 using std::setw;
 using std::fixed;
 using std::setprecision;
 using std::tr1::unordered_map;
 
-
-/*
- * This code is used to deal with read data in BAM format.
- */
-#ifdef HAVE_BAMTOOLS
-#include "api/BamReader.h"
-#include "api/BamAlignment.h"
-
-using BamTools::BamAlignment;
-using BamTools::SamHeader;
-using BamTools::RefVector;
-using BamTools::BamReader;
-using BamTools::RefData;
-
-static SimpleGenomicRegion
-BamToSimpleGenomicRegion(const unordered_map<size_t, string> &chrom_lookup,
-		   const BamAlignment &ba) {
-  const unordered_map<size_t, string>::const_iterator
-    the_chrom(chrom_lookup.find(ba.RefID));
-  if (the_chrom == chrom_lookup.end())
-    throw SMITHLABException("no chrom with id: " + toa(ba.RefID));
-
-  const string chrom = the_chrom->second;
-  const size_t start = ba.Position;
-  const size_t end = start + ba.Length;
-
-  return SimpleGenomicRegion(chrom, start, end);
-}
-
-static GenomicRegion
-BamToGenomicRegion(const unordered_map<size_t, string> &chrom_lookup,
-		   const BamAlignment &ba){
-
-  const unordered_map<size_t, string>::const_iterator
-    the_chrom(chrom_lookup.find(ba.RefID));
-  if (the_chrom == chrom_lookup.end())
-    throw SMITHLABException("no chrom with id: " + toa(ba.RefID));
-  const string chrom = the_chrom->second;
-  const size_t start = ba.Position;
-  const size_t end = ba.Position + ba.InsertSize;
-
-  return GenomicRegion(chrom, start, end);
-
-}
-
-
-static size_t
-load_values_BAM_se(const string &input_file_name, vector<double> &values) {
-
-  BamReader reader;
-  reader.Open(input_file_name);
-
-  // Get header and reference
-  string header = reader.GetHeaderText();
-  RefVector refs = reader.GetReferenceData();
-
-  unordered_map<size_t, string> chrom_lookup;
-  for (size_t i = 0; i < refs.size(); ++i)
-    chrom_lookup[i] = refs[i].RefName;
-
-  size_t n_reads = 1;
-  values.push_back(1.0);
-
-  SimpleGenomicRegion prev;
-  BamAlignment bam;
-  while (reader.GetNextAlignment(bam)) {
-    // ignore unmapped reads & secondary alignments
-    if(bam.IsMapped() && bam.IsPrimaryAlignment()){ 
-     //only count unpaired reads or the left mate of paired reads
-      if(!(bam.IsPaired()) || 
-	 (bam.IsFirstMate())){
-
-	SimpleGenomicRegion r(BamToSimpleGenomicRegion(chrom_lookup, bam));
-	if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-	  throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-	if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-	  values.push_back(1.0);
-	else values.back()++;
-	++n_reads;
-	prev.swap(r);
-      }
-    }
-  }
-  reader.Close();
-
-  return n_reads;
-}
-
-static size_t
-load_values_BAM_pe(const string &input_file_name, vector<double> &values) {
-
-  BamReader reader;
-  reader.Open(input_file_name);
-
-  // Get header and reference
-  string header = reader.GetHeaderText();
-  RefVector refs = reader.GetReferenceData();
-
-  unordered_map<size_t, string> chrom_lookup;
-  for (size_t i = 0; i < refs.size(); ++i)
-    chrom_lookup[i] = refs[i].RefName;
-
-  size_t n_reads = 1;
-  values.push_back(1.0);
-
-  GenomicRegion prev;
-  BamAlignment bam;
-  while (reader.GetNextAlignment(bam)) {
-    // ignore unmapped reads & secondary alignments
-    if(bam.IsMapped() && bam.IsPrimaryAlignment()){ 
-      // ignore reads that do not map concoordantly
-      if(bam.IsPaired() && bam.IsProperPair() && bam.IsFirstMate()){
-	GenomicRegion r(BamToGenomicRegion(chrom_lookup, bam));
-	if (r.same_chrom(prev) && r.get_start() < prev.get_start()
-	    && r.get_end() < prev.get_end())
-	    throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-	if (!r.same_chrom(prev) || r.get_start() != prev.get_start()
-	    || r.get_end() != prev.get_end())
-	  values.push_back(1.0);
-	else values.back()++;
-	++n_reads;
-	prev.swap(r);
-      }
-    }
-  }
-  reader.Close();
-  return n_reads;
-}
-#endif
-
-
-static size_t
-load_values_BED_se(const string input_file_name, vector<double> &values) {
-
- std::ifstream in(input_file_name.c_str());
- if (!in)
-   throw "problem opening file: " + input_file_name;
-
- SimpleGenomicRegion r, prev;
- if (!(in >> prev))
-   throw "problem reading from: " + input_file_name;
-
- size_t n_reads = 1;
- values.push_back(1.0);
- while (in >> r) {
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-   if (!r.same_chrom(prev) || r.get_start() != prev.get_start())
-     values.push_back(1.0);
-   else values.back()++;
-   ++n_reads;
-   prev.swap(r);
- }
- return n_reads;
-}
-
-static size_t
-load_values_BED_pe(const string input_file_name, vector<double> &values) {
-
- std::ifstream in(input_file_name.c_str());
- if (!in)
-   throw "problem opening file: " + input_file_name;
-
- GenomicRegion r, prev;
- if (!(in >> prev))
-   throw "problem reading from: " + input_file_name;
-
- size_t n_reads = 1;
- values.push_back(1.0);
- while (in >> r) {
-    if (r.same_chrom(prev) && r.get_start() < prev.get_start() 
-	&& r.get_end() < prev.get_end())
-      throw SMITHLABException("locations unsorted in: " + input_file_name);
-    
-    if (!r.same_chrom(prev) || r.get_start() != prev.get_start() 
-	|| r.get_end() != prev.get_end())
-     values.push_back(1.0);
-   else values.back()++;
-   ++n_reads;
-   prev.swap(r);
- }
- return n_reads;
-}
-
-static size_t
-load_values(const string input_file_name, vector<double> &values) {
-
-  std::ifstream in(input_file_name.c_str());
-  if (!in)
-    throw SMITHLABException("problem opening file: " + input_file_name);
-
-  vector<double> full_values;
-  size_t n_reads = 0;
-  static const size_t buffer_size = 10000; // Magic!
-  while(!in.eof()){
-    char buffer[buffer_size];
-    in.getline(buffer, buffer_size);
-    double val = atof(buffer);
-    if(val > 0.0)
-    full_values.push_back(val);
-    if(full_values.back() < 0.0){
-      cerr << "INVALID INPUT\t" << buffer << endl;
-      throw SMITHLABException("ERROR IN INPUT");
-    }
-    ++n_reads;
-    in.peek();
-  }
-  in.close();
-  if(full_values.back() == 0)
-    full_values.pop_back();
-
-  values.swap(full_values);
-  return n_reads;
-}
 
 static double
 sample_count_reads_w_mincount(const gsl_rng *rng,
@@ -298,14 +82,18 @@ int main(int argc, const char **argv) {
     size_t lower_limit = 1000000;
     size_t upper_limit = 0;
     size_t step_size = 1000000;
-    size_t min_count = 2;
+    size_t mincount = 2;
 
     bool VERBOSE = false;
     bool VALS_INPUT = false;
     bool PAIRED_END = false;
+    bool HIST_INPUT = false;
 
-#ifdef HAVE_BAMTOOLS
+
+    
+#ifdef HAVE_SAMTOOLS
     bool BAM_FORMAT_INPUT = false;
+    size_t MAX_SEGMENT_LENGTH = 5000;
 #endif
 
 
@@ -315,8 +103,8 @@ int main(int argc, const char **argv) {
 			   "<bed-file|bam-file>");
     opt_parse.add_opt("output", 'o', "Name of output file (default: stdout)", 
 		      false , outfile);
-    opt_parse.add_opt("min_count",'m', "minimum # reads required to count a position",
-		      false, min_count);
+    opt_parse.add_opt("mincount",'m', "minimum # reads required to count a position",
+		      false, mincount);
     opt_parse.add_opt("lower", 'l', "lower limit for samples", 
     		      false , lower_limit);
     opt_parse.add_opt("upper", 'u', "upper limit for samples", 
@@ -325,15 +113,23 @@ int main(int argc, const char **argv) {
     		      false , step_size);
     opt_parse.add_opt("verbose", 'v', "print more run information", 
 		      false , VERBOSE);
-#ifdef HAVE_BAMTOOLS
+#ifdef HAVE_SAMTOOLS
     opt_parse.add_opt("bam", 'B', "input is in BAM format", 
-		      false , BAM_FORMAT_INPUT);
+		      false, BAM_FORMAT_INPUT);
+    opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
+                      "paired end bam reads (default: "
+                      + toa(MAX_SEGMENT_LENGTH) + ")",
+                      false, MAX_SEGMENT_LENGTH);
 #endif
-   opt_parse.add_opt("pe", 'P', "input is paired end read file",
+    opt_parse.add_opt("pe", 'P', "input is paired end read file",
 		      false, PAIRED_END);
     opt_parse.add_opt("vals", 'V', 
 		      "input is a text file containing only the observed counts",
 		      false, VALS_INPUT);
+    opt_parse.add_opt("hist", 'H',
+                      "input is a text file containing the observed histogram",
+                      false, HIST_INPUT);
+
 
     vector<string> leftover_args;
     opt_parse.parse(argc, argv, leftover_args);
@@ -362,59 +158,107 @@ int main(int argc, const char **argv) {
     srand(time(0) + getpid());
     gsl_rng_set(rng, rand());
     
-    if (VERBOSE)
-      cerr << "loading mapped locations" << endl;
+    vector<double> counts_hist;
+    size_t n_reads = 0;
 
-    vector<double> values;
-    if(VALS_INPUT)
-      load_values(input_file_name, values);
-#ifdef HAVE_BAMTOOLS
-    else if (BAM_FORMAT_INPUT && PAIRED_END)
-      load_values_BAM_pe(input_file_name, values);
-    else if(BAM_FORMAT_INPUT)
-      load_values_BAM_se(input_file_name, values);
+    // LOAD VALUES
+    if(HIST_INPUT){
+      if(VERBOSE)
+        cerr << "HIST_INPUT" << endl;
+      n_reads = load_histogram(input_file_name, counts_hist);
+    }
+    else if(VALS_INPUT){
+      if(VERBOSE)
+        cerr << "VALS_INPUT" << endl;
+      n_reads = load_counts(input_file_name, counts_hist);
+    }
+#ifdef HAVE_SAMTOOLS
+    else if (BAM_FORMAT_INPUT && PAIRED_END){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BAM_INPUT" << endl;
+      const size_t MAX_READS_TO_HOLD = 5000000;
+      size_t n_paired = 0;
+      size_t n_mates = 0;
+      n_reads = load_counts_BAM_pe(VERBOSE, input_file_name, 
+                                   MAX_SEGMENT_LENGTH, 
+                                   MAX_READS_TO_HOLD, n_paired, 
+                                   n_mates, counts_hist);
+      if(VERBOSE){
+        cerr << "MERGED PAIRED END READS = " << n_paired << endl;
+        cerr << "MATES PROCESSED = " << n_mates << endl;
+      }
+    }
+    else if(BAM_FORMAT_INPUT){
+      if(VERBOSE)
+        cerr << "BAM_INPUT" << endl;
+      n_reads = load_counts_BAM_se(input_file_name, counts_hist);
+    }
 #endif
-    else if(PAIRED_END)
-      load_values_BED_pe(input_file_name, values);  
-    else
-      load_values_BED_se(input_file_name, values);
+    else if(PAIRED_END){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BED_INPUT" << endl;
+      n_reads = load_counts_BED_pe(input_file_name, counts_hist);
+    }
+    else{ // default is single end bed file
+      if(VERBOSE)
+        cerr << "BED_INPUT" << endl;
+      n_reads = load_counts_BED_se(input_file_name, counts_hist);
+    }
 
-    if(VERBOSE){
-      const size_t max_observed_count = 
-	static_cast<size_t>(*std::max_element(values.begin(), values.end()));
-      vector<double> counts_hist(max_observed_count + 1, 0.0);
-      for (size_t i = 0; i < values.size(); ++i)
-	++counts_hist[static_cast<size_t>(values[i])];
+    const size_t max_observed_count = counts_hist.size() - 1;
+    //   const double distinct_reads = accumulate(counts_hist.begin(),
+    //                                       counts_hist.end(), 0.0);
 
-      const double observed_mincount = accumulate(counts_hist.begin() + min_count,
-						  counts_hist.end(), 0.0);
 
-    
-      cerr << "TOTAL READS       = " << accumulate(values.begin(), values.end(), 0.0) << endl
-	   << "DISTINCT READS    = " << values.size() << endl
-	   << "MAX COUNT         = " << max_observed_count << endl
-	   << "COUNTS OF 1       = " << counts_hist[1] << endl
-	   << "OBSERVED MINCOUNT = " << observed_mincount << endl;
+    // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+    size_t counts_before_first_zero = 1;
+    while (counts_before_first_zero < counts_hist.size() &&
+           counts_hist[counts_before_first_zero] > 0)
+      ++counts_before_first_zero;
 
-      /*  
+    const double initial_observed 
+      = accumulate(counts_hist.begin() + mincount, counts_hist.end(), 0.0);
+
+    double values_sum = 0.0;
+    for(size_t i = 0; i < counts_hist.size(); i++)
+	  values_sum += i*counts_hist[i];
+
+
+    const size_t distinct_counts =
+      static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
+                                        bind2nd(std::greater<double>(), 0.0)));
+    if (VERBOSE)
+      cerr << "TOTAL READS      = " << n_reads << endl
+           << "INITIAL MINCOUNT = " << initial_observed << endl
+           << "DISTINCT COUNTS  = " << distinct_counts << endl
+           << "MAX COUNT        = " << max_observed_count << endl
+           << "COUNTS OF 1      = " << counts_hist[1] << endl;
+
+    if (VERBOSE) {
+      // OUTPUT THE ORIGINAL HISTOGRAM
       cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
       for (size_t i = 0; i < counts_hist.size(); i++)
-	if (counts_hist[i] > 0)
-	  cerr << i << '\t' << counts_hist[i] << endl;
+        if (counts_hist[i] > 0)
+          cerr << i << '\t' << static_cast<size_t>(counts_hist[i]) << endl;
       cerr << endl;
-      */
-     
     }
-      
-    vector<size_t> full_umis;
-    for (size_t i = 0; i < values.size(); i++)
-      for (size_t j = 0; j < values[i]; j++)
-	full_umis.push_back(i+1);
+
+    //construct umi vector to sample from
+    vector<size_t> umis;
+    size_t umi = 1;
+    for(size_t i = 1; i < counts_hist.size(); i++){
+      for(size_t j = 0; j < counts_hist[i]; j++){
+	for(size_t k = 0; k < i; k++)
+	  umis.push_back(umi);
+	umi++;
+      }
+    }
+    assert(umis.size() == static_cast<size_t>(values_sum));
     
     if (upper_limit == 0)
-      upper_limit = full_umis.size();
+      upper_limit = umis.size();
     else
-      upper_limit = std::min(full_umis.size(), upper_limit);
+      upper_limit = std::min(umis.size(), upper_limit);
     
     std::ofstream of;
     if (!outfile.empty()) of.open(outfile.c_str());
@@ -425,8 +269,8 @@ int main(int argc, const char **argv) {
     for (size_t i = lower_limit; i <= upper_limit; i += step_size) {
       if (VERBOSE)
 	cerr << "sample size: " << i << endl;
-      out << i << "\t" << sample_count_reads_w_mincount(rng, full_umis, 
-							i, min_count) << endl;
+      out << i << "\t" << sample_count_reads_w_mincount(rng, umis, 
+							i, mincount) << endl;
     }
     
   }
