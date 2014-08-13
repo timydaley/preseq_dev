@@ -240,6 +240,99 @@ bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_hist,
   }
 }
 
+static bool
+extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
+                       size_t max_terms, const int diagonal,
+                       const double step_size, 
+                       const double max_extrapolation,
+                       vector<double> &saturation_estimates) {
+
+  //setup rng
+  srand(time(0) + getpid());
+  gsl_rng_env_setup();
+  gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
+  gsl_rng_set(rng, rand());
+
+
+  saturation_estimates.clear();
+  double vals_sum = 0.0;
+  for(size_t i = 0; i < hist.size(); i++)
+    vals_sum += i*hist[i];
+
+  const double max_val = max_extrapolation/vals_sum;
+  const double val_step = step_size/vals_sum;
+
+  //construct umi vector to sample from
+  vector<size_t> umis;
+  size_t umi = 1;
+  for(size_t i = 1; i < hist.size(); i++){
+    for(size_t j = 0; j < hist[i]; j++){
+      for(size_t k = 0; k < i; k++)
+        umis.push_back(umi);
+      umi++;
+    }
+  }
+  assert(umis.size() == static_cast<size_t>(vals_sum));
+
+  // interpolate complexity curve by random sampling w/out replacement
+  size_t upper_limit = static_cast<size_t>(vals_sum);
+  size_t step = static_cast<size_t>(step_size);
+  size_t sample = step;
+  while (sample < upper_limit){
+    saturation_estimates.push_back(sample_count_singletons(rng, umis, sample)/sample);
+    sample += step;
+  }
+
+  // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
+  size_t counts_before_first_zero = 1;
+  while (counts_before_first_zero < hist.size() &&
+         hist[counts_before_first_zero] > 0)
+    ++counts_before_first_zero;
+
+
+  // Ensure we are not using a zero term
+  max_terms = std::min(max_terms, counts_before_first_zero - 1);
+
+  // refit curve for lower bound (degree of approx is 1 less than
+  // max_terms)
+  max_terms = max_terms - (max_terms % 2 == 1);
+
+  const ContinuedFractionApproximation
+    lower_cfa(diagonal, max_terms);
+
+  const ContinuedFraction
+    lower_cf(lower_cfa.optimal_cont_frac_distinct(hist));
+
+  // extrapolate curve
+  if (lower_cf.is_valid()){
+	lower_cf.extrapolate_yield_deriv(hist, vals_sum, 
+					 static_cast<double>(sample)/vals_sum,
+					 max_val, val_step, 
+					 saturation_estimates);
+  }
+  else{
+    // FAIL!
+    // lower_cf unacceptable, need to bootstrap to obtain estimates
+    return false;
+  }
+
+  if (VERBOSE) {
+    if(lower_cf.offset_coeffs.size() > 0){
+      cerr << "CF_OFFSET_COEFF_ESTIMATES" << endl;
+      copy(lower_cf.offset_coeffs.begin(), lower_cf.offset_coeffs.end(),
+           std::ostream_iterator<double>(cerr, "\n"));
+    }
+    if(lower_cf.cf_coeffs.size() > 0){
+      cerr << "CF_COEFF_ESTIMATES" << endl;
+      copy(lower_cf.cf_coeffs.begin(), lower_cf.cf_coeffs.end(),
+           std::ostream_iterator<double>(cerr, "\n"));
+    }
+  }
+
+  // SUCCESS!!
+  return true;
+}
+
 
 static double
 compute_var(const vector<double> &estimates,
@@ -336,7 +429,7 @@ main(const int argc, const char **argv) {
     /**************** GET COMMAND LINE ARGUMENTS ***********************/
 	OptionParser opt_parse(strip_path(argv[0]),
 			       "", "<sorted-bed-file>");
-	opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
+	opt_parse.add_opt("output", 'o', "saturation output file (default: stdout)",
 			  false , outfile);
 	opt_parse.add_opt("extrap",'e',"maximum extrapolation "
 			  "(default: " + toa(max_extrapolation) + ")",
@@ -376,7 +469,7 @@ main(const int argc, const char **argv) {
 			  "input is a text file containing the observed histogram",
 			  false, HIST_INPUT);
 	opt_parse.add_opt("quick",'Q',
-			  "quick mode, estimate yield without bootstrapping for confidence intervals",
+			  "quick mode, estimate saturation without bootstrapping for confidence intervals",
 			  false, SINGLE_ESTIMATE);
     vector<string> leftover_args;
     opt_parse.parse(argc, argv, leftover_args);
@@ -511,8 +604,32 @@ main(const int argc, const char **argv) {
                               "duplicates removed");
 
 
-    if(VERBOSE)
-      cerr << "COMPUTING SATURATION" << endl;
+    if(SINGLE_ESTIMATE){
+      vector<double> saturation_estimates;
+      extrap_single_estimate(VERBOSE, counts_hist, orig_max_terms, diagonal,
+			     step_size, max_extrapolation, saturation_estimates); 
+
+
+      if(VERBOSE)
+	cerr << "[WRITING OUTPUT]" << endl;
+
+      std::ofstream of;
+      if (!outfile.empty()) of.open(outfile.c_str());
+      std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
+
+      out << "TOTAL_READS" << '\t' 
+	  << "SATURATION" << endl;
+    
+      out << 0 << '\t' << 1.0 << endl;
+      for (size_t i = 0; i < saturation_estimates.size(); ++i)
+	out << (i + 1)*step_size << '\t' 
+	    << saturation_estimates[i] << endl;
+
+    
+    }
+    else{
+      if(VERBOSE)
+	cerr << "COMPUTING SATURATION" << endl;
 
       vector< vector<double> > full_deriv_estimates;
       bootstrap_saturation_deriv(VERBOSE, counts_hist,  
@@ -551,7 +668,7 @@ main(const int argc, const char **argv) {
 	    << upper_alphaCI_deriv[i] << endl;
 
     
-
+    }
   }
   catch (SMITHLABException &e) {
     cerr << "ERROR:\t" << e.what() << endl;
