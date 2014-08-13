@@ -147,10 +147,7 @@ bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_hist,
     
     double vals_sum = 0.0;
     for(size_t i = 0; i < orig_hist.size(); i++)
-        vals_sum += orig_hist[i]*i;
-    
-    const double initial_distinct = accumulate(orig_hist.begin(), orig_hist.end(), 0.0);
-    
+        vals_sum += orig_hist[i]*i;    
     
     vector<size_t> orig_hist_distinct_counts;
     vector<double> distinct_orig_hist;
@@ -193,7 +190,7 @@ bootstrap_saturation_deriv(const bool VERBOSE, const vector<double> &orig_hist,
         
         //refit curve for lower bound
     const ContinuedFractionApproximation
-      lower_cfa(diagonal, max_terms, step_size, max_extrapolation);
+      lower_cfa(diagonal, max_terms);
         
     const ContinuedFraction
       lower_cf(lower_cfa.optimal_cont_frac_distinct(hist));
@@ -306,7 +303,6 @@ main(const int argc, const char **argv) {
         
         size_t orig_max_terms = 100;
         double max_extrapolation = 1.0e10;
-        size_t upper_limit = 0;
         
         // AS: this step size issue needs to be addressed
         double step_size = 1e6;
@@ -406,104 +402,114 @@ main(const int argc, const char **argv) {
      
     vector<double> counts_hist;
     size_t n_reads = 0;
-    
+
     // LOAD VALUES
     if(HIST_INPUT){
-        if(VERBOSE)
-            cerr << "INPUT_HIST" << endl;
-        n_reads = load_histogram(input_file_name, counts_hist);
+      if(VERBOSE)
+        cerr << "HIST_INPUT" << endl;
+      n_reads = load_histogram(input_file_name, counts_hist);
     }
     else if(VALS_INPUT){
-        if(VERBOSE)
-            cerr << "VALS_INPUT" << endl;
-        n_reads = load_counts(input_file_name, counts_hist);
+      if(VERBOSE)
+        cerr << "VALS_INPUT" << endl;
+      n_reads = load_counts(input_file_name, counts_hist);
     }
 #ifdef HAVE_SAMTOOLS
     else if (BAM_FORMAT_INPUT && PAIRED_END){
-        if(VERBOSE)
-            cerr << "PAIRED_END_BAM_INPUT" << endl;
-        const size_t MAX_READS_TO_HOLD = 100000;
-        n_reads = load_counts_BAM_pe(VERBOSE, input_file_name, MAX_SEGMENT_LENGTH,
-                                     MAX_READS_TO_HOLD, counts_hist);
+      if(VERBOSE)
+        cerr << "PAIRED_END_BAM_INPUT" << endl;
+      const size_t MAX_READS_TO_HOLD = 5000000;
+      size_t n_paired = 0;
+      size_t n_mates = 0;
+      n_reads = load_counts_BAM_pe(VERBOSE, input_file_name, 
+                                   MAX_SEGMENT_LENGTH, 
+                                   MAX_READS_TO_HOLD, n_paired, 
+                                   n_mates, counts_hist);
+      if(VERBOSE){
+        cerr << "MERGED PAIRED END READS = " << n_paired << endl;
+        cerr << "MATES PROCESSED = " << n_mates << endl;
+      }
     }
     else if(BAM_FORMAT_INPUT){
-        if(VERBOSE)
-            cerr << "BAM_INPUT" << endl;
-        n_reads = load_counts_BAM_se(input_file_name, counts_hist);
+      if(VERBOSE)
+        cerr << "BAM_INPUT" << endl;
+      n_reads = load_counts_BAM_se(input_file_name, counts_hist);
     }
 #endif
     else if(PAIRED_END){
-        if(VERBOSE)
-            cerr << "PAIRED_END_BED_INPUT" << endl;
-        n_reads = load_counts_BED_pe(input_file_name, counts_hist);
+      if(VERBOSE)
+        cerr << "PAIRED_END_BED_INPUT" << endl;
+      n_reads = load_counts_BED_pe(input_file_name, counts_hist);
     }
     else{ // default is single end bed file
-        if(VERBOSE)
-            cerr << "BED_INPUT" << endl;
-        n_reads = load_counts_BED_se(input_file_name, counts_hist);
+      if(VERBOSE)
+        cerr << "BED_INPUT" << endl;
+      n_reads = load_counts_BED_se(input_file_name, counts_hist);
     }
-    
+
     const size_t max_observed_count = counts_hist.size() - 1;
     const double distinct_reads = accumulate(counts_hist.begin(),
                                              counts_hist.end(), 0.0);
-    
+
     // for large initial experiments need to adjust step size
     // otherwise small relative steps do not account for variance
     // in extrapolation
     if(step_size < (n_reads/20)){
-        step_size = std::max(step_size, step_size*round(n_reads/(20*step_size)));
-        if(VERBOSE)
-            cerr << "ADJUSTED_STEP_SIZE = " << step_size << endl;
+      step_size = std::max(step_size, 
+                           step_size*round(n_reads/(20*step_size)));
+      if(VERBOSE)
+        cerr << "ADJUSTED_STEP_SIZE = " << step_size << endl;
     }
 
     // ENSURE THAT THE MAX TERMS ARE ACCEPTABLE
     size_t counts_before_first_zero = 1;
     while (counts_before_first_zero < counts_hist.size() &&
            counts_hist[counts_before_first_zero] > 0)
-        ++counts_before_first_zero;
+      ++counts_before_first_zero;
 
     orig_max_terms = std::min(orig_max_terms, counts_before_first_zero - 1);
     orig_max_terms = orig_max_terms - (orig_max_terms % 2 == 1);
-        
-    
+
+
     const size_t distinct_counts =
-    static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
-                                      bind2nd(std::greater<double>(), 0.0)));
+      static_cast<size_t>(std::count_if(counts_hist.begin(), counts_hist.end(),
+                                        bind2nd(std::greater<double>(), 0.0)));
     if (VERBOSE)
-        cerr << "TOTAL READS     = " << n_reads << endl
-	     << "DISTINCT READS  = " << distinct_reads << endl
-	     << "DISTINCT COUNTS = " << distinct_counts << endl
-	     << "MAX COUNT       = " << max_observed_count << endl
-	     << "COUNTS OF 1     = " << counts_hist[1] << endl
-	     << "MAX TERMS       = " << orig_max_terms << endl;
-    
+      cerr << "TOTAL READS     = " << n_reads << endl
+           << "DISTINCT READS  = " << distinct_reads << endl
+           << "DISTINCT COUNTS = " << distinct_counts << endl
+           << "MAX COUNT       = " << max_observed_count << endl
+           << "COUNTS OF 1     = " << counts_hist[1] << endl
+           << "MAX TERMS       = " << orig_max_terms << endl;
+
     if (VERBOSE) {
-        // OUTPUT THE ORIGINAL HISTOGRAM
-        cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
-        for (size_t i = 0; i < counts_hist.size(); i++)
-            if (counts_hist[i] > 0)
-                cerr << i << '\t' << static_cast<size_t>(counts_hist[i]) << endl;
-        cerr << endl;
+      // OUTPUT THE ORIGINAL HISTOGRAM
+      cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
+      for (size_t i = 0; i < counts_hist.size(); i++)
+        if (counts_hist[i] > 0)
+          cerr << i << '\t' << static_cast<size_t>(counts_hist[i]) << endl;
+      cerr << endl;
     }
-    
+
     // check to make sure library is not overly saturated
     const double two_fold_extrap = GoodToulmin2xExtrap(counts_hist);
     if(two_fold_extrap < 0.0)
-        throw SMITHLABException("Library expected to saturate in doubling of size, unable to extrapolate");
-    
-    
+      throw SMITHLABException("Library expected to saturate in doubling of "
+                              "size, unable to extrapolate");
+
+
     size_t total_reads = 0;
     for(size_t i = 0; i < counts_hist.size(); i++){
-        total_reads += i*counts_hist[i];
-      //  cerr << "total reads " << total_reads << endl;
+      total_reads += i*counts_hist[i];
     }
     //assert(total_reads == n_reads);
-    
-    
-    
-    // catch if all reads are distinct or sample sufficiently deep
-    if (max_observed_count < MIN_REQUIRED_COUNTS)
-        throw SMITHLABException("sample not sufficiently deep or duplicates removed");
+
+    // catch if all reads are distinct
+    if (orig_max_terms < MIN_REQUIRED_COUNTS)
+      throw SMITHLABException("max count before zero is les than min required "
+                              "count (4), sample not sufficiently deep or "
+                              "duplicates removed");
+
 
     if(VERBOSE)
       cerr << "COMPUTING SATURATION" << endl;
@@ -537,7 +543,6 @@ main(const int argc, const char **argv) {
 	  << "LOWER_" << 100*c_level << "%CI" << '\t' 
 	  << "UPPER_" << 100*c_level << "%CI" << endl;
     
-      double val = 0.0;
       out << 0 << '\t' << 1.0 << '\t' << 1.0 << '\t' << 1.0 << endl;
       for (size_t i = 0; i < mean_deriv_estimates.size(); ++i)
 	out << (i + 1)*step_size << '\t' 

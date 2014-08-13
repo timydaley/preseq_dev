@@ -33,7 +33,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq mincount_extrap mincount_c_curve
+PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap
 ifdef SAMTOOLS_DIR
 PROGS += bam2mr
 endif
@@ -79,7 +79,7 @@ $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
 
 mincount_c_curve: load_data_for_complexity.o
 
-mincount_extrap preseq: continued_fraction.o load_data_for_complexity.o
+saturation_extrap mincount_extrap preseq: continued_fraction.o load_data_for_complexity.o
 
 test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
 
