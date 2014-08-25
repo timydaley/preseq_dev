@@ -27,9 +27,9 @@ SMITHLAB_CPP=$(ROOT)/smithlab_cpp/
 endif
 
 
-#ifndef SAMTOOLS_DIR
-#SAMTOOLS_DIR=$(ROOT)/samtools/
-#endif
+ifndef SAMTOOLS_DIR
+SAMTOOLS_DIR=$(ROOT)/samtools/
+endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
@@ -81,7 +81,7 @@ mincount_c_curve: load_data_for_complexity.o
 
 saturation_extrap mincount_extrap preseq: continued_fraction.o load_data_for_complexity.o
 
-test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
+bootstrap_3term test_quad_3term test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
 
 gc_extrap: continued_fraction.o
 

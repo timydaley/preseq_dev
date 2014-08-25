@@ -58,7 +58,7 @@ public:
 
   double expected_zeros(const double distinct);
   double EM_estim_params(const double tol, const size_t max_iter,
-			  std::vector<double> &vals_hist); //returns log_like
+			  std::vector<double> &vals_hist); //returns EM log_like
   double EM_estim_mu_fixed_alpha(const double tol, const size_t max_iter,
 			       const std::vector<double> &vals_hist);
   double trunc_pval(const size_t val);
