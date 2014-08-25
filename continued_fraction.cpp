@@ -643,6 +643,7 @@ ContinuedFraction::extrapolate_saturation(const vector<double> &counts_hist,
     saturation_estimates.push_back(operator()(t)/vals_sum);
 }
 
+// Note that d/dt(t*c(t)) = c(t) + t*d\dt(c(t))
 void
 ContinuedFraction::extrapolate_yield_deriv(const vector<double> &counts_hist,
                                            const double vals_sum,

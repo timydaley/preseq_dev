@@ -259,9 +259,6 @@ extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
   for(size_t i = 0; i < hist.size(); i++)
     vals_sum += i*hist[i];
 
-  const double max_val = max_extrapolation/vals_sum;
-  const double val_step = step_size/vals_sum;
-
   //construct umi vector to sample from
   vector<size_t> umis;
   size_t umi = 1;
@@ -278,7 +275,7 @@ extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
   size_t upper_limit = static_cast<size_t>(vals_sum);
   size_t step = static_cast<size_t>(step_size);
   size_t sample = step;
-  while (sample < upper_limit){
+  while (sample <= upper_limit){
     saturation_estimates.push_back(sample_count_singletons(rng, umis, sample)/sample);
     sample += step;
   }
@@ -305,10 +302,17 @@ extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
 
   // extrapolate curve
   if (lower_cf.is_valid()){
-	lower_cf.extrapolate_yield_deriv(hist, vals_sum, 
-					 static_cast<double>(sample)/vals_sum,
-					 max_val, val_step, 
-					 saturation_estimates);
+    double sample_size = static_cast<double>(sample);
+    while(sample_size < max_extrapolation){
+      const double one_minus_fold_extrap 
+        = (sample_size - vals_sum)/vals_sum;
+      assert(one_minus_fold_extrap >= 0.0);
+      double tmp = 
+	(lower_cf(one_minus_fold_extrap) 
+	 + one_minus_fold_extrap*lower_cf.complex_deriv(one_minus_fold_extrap))/vals_sum;
+      saturation_estimates.push_back(tmp);
+      sample_size += step_size;
+    }
   }
   else{
     // FAIL!
