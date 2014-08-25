@@ -142,6 +142,7 @@ check_finite(const vector<double> &x){
   return ALL_FINITE;
 }
 
+/*
 static inline bool
 check_xs(const vector<double> &xs,
 	 const double N){
@@ -156,11 +157,14 @@ check_xs(const vector<double> &xs,
 
   return true;
 }
+*/
 
+/*
 static inline bool
 smaller_abs(const double a, const double b){
   return fabs(a) < fabs(b);
 }
+*/
 
 // we want the iteration to move in the same direction,
 // but we want no variable to be negative.

@@ -33,7 +33,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap
+PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap test_quad_bootstrap
 ifdef SAMTOOLS_DIR
 PROGS += bam2mr
 endif
@@ -62,10 +62,9 @@ ifdef DEBUG
 CXXFLAGS += $(DEBUGFLAGS)
 endif
 
-ifdef SAMTOOLS_DIR
 INCLUDEDIRS += $(SAMTOOLS_DIR)
 CXXFLAGS += -DHAVE_SAMTOOLS
-endif
+
 
 
 ifdef OPT
@@ -81,7 +80,7 @@ mincount_c_curve: load_data_for_complexity.o
 
 saturation_extrap mincount_extrap preseq: continued_fraction.o load_data_for_complexity.o
 
-bootstrap_3term test_quad_3term test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
+test_quad_bootstrap bootstrap_3term test_quad_3term test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
 
 gc_extrap: continued_fraction.o
 
