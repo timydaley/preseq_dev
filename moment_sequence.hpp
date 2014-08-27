@@ -53,12 +53,12 @@ struct MomentSequence {
 			     std::vector<double> &points);
 
   // quadrature rules using QR on Jacobi matrix 
-  bool QR_quadrature_rules(const bool VERBOSE,
-			   const size_t n_points,
-			   const double tolerance, 
-			   const size_t max_iter,
-			   std::vector<double> &points,
-			   std::vector<double> &weights);
+  bool Lower_quadrature_rules(const bool VERBOSE,
+				 const size_t n_points,
+				 const double tolerance, 
+				 const size_t max_iter,
+				 std::vector<double> &points,
+				 std::vector<double> &weights);
 
   bool GaussRadau_quadrature_rules(const bool VERBOSE,
 				   const size_t n_points,

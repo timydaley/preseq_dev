@@ -123,7 +123,7 @@ resample_hist(const gsl_rng *rng, const vector<size_t> &vals_hist_distinct_count
 }
 
 
-void
+bool
 quadrature_bootstraps(const bool VERBOSE,
 		      const vector<double> &orig_hist,
 		      const size_t bootstraps,
@@ -148,7 +148,7 @@ quadrature_bootstraps(const bool VERBOSE,
     }
   }
 
-  const size_t max_iter = 10*bootstraps;
+  const size_t max_iter = 100*bootstraps;
   for(size_t iter = 0; iter < max_iter && quad_estimates.size() < bootstraps; ++iter){
 
     vector<double> hist;
@@ -185,9 +185,12 @@ quadrature_bootstraps(const bool VERBOSE,
 
       quad_estimates.push_back(estimated_integral);
     }
-
   }
 
+  if(quad_estimates.size() == bootstraps)
+    return true;
+
+  return false;
 }
 
 void
@@ -210,6 +213,25 @@ log_mean_quad(const bool VERBOSE,
   const double inv_norm_alpha = gsl_cdf_ugaussian_Qinv((1.0 - ci_level)/2.0);
   log_lower_ci = exp(log(log_mean) - inv_norm_alpha*log_std_dev);
   log_upper_ci = exp(log(log_mean) + inv_norm_alpha*log_std_dev);
+}
+
+void
+mean_quad(const bool VERBOSE,
+	      const vector<double> &quad_estimates,
+	      const double ci_level,
+	      double &mean_estim, 
+	      double &lower_ci,
+	      double &upper_ci){
+
+  mean_estim = gsl_stats_mean(&quad_estimates[0], 1,
+			      quad_estimates.size());
+
+  double std_dev = std::sqrt(gsl_stats_variance(&quad_estimates[0], 1, 
+						quad_estimates.size()) );
+
+  const double inv_norm_alpha = gsl_cdf_ugaussian_Qinv((1.0 - ci_level)/2.0);
+  lower_ci = mean_estim - inv_norm_alpha*std_dev;
+  upper_ci = mean_estim + inv_norm_alpha*std_dev;
 }
 
 
@@ -341,22 +363,39 @@ main(const int argc, const char **argv) {
     /////////////////////////////////////////////////////////////////////
 
       vector<double> quad_estimates;
-      quadrature_bootstraps(VERBOSE, counts_hist, bootstraps, n_points,
-			    tolerance, quad_estimates);
+      bool BOOTSTRAP_QUAD_SUCCESS = 
+	quadrature_bootstraps(VERBOSE, counts_hist, bootstraps, n_points,
+			      tolerance, quad_estimates);
+
+      if(BOOTSTRAP_QUAD_SUCCESS){
+	if(VERBOSE){
+	  cerr << "quad_estimates = " << '\t';
+	  for(size_t i = 0; i < quad_estimates.size(); i++)
+	    cerr << quad_estimates[i] << '\t';
+	  cerr << endl;
+	}
   
-      double log_mean, log_lower_ci, log_upper_ci;
-      log_mean_quad(VERBOSE, quad_estimates, ci_level,
-		    log_mean, log_lower_ci, log_upper_ci);
+	double log_mean, log_lower_ci, log_upper_ci;
+	log_mean_quad(VERBOSE, quad_estimates, ci_level,
+		      log_mean, log_lower_ci, log_upper_ci);
+
+	double mean_estim, lower_ci, upper_ci;
+	mean_quad(VERBOSE, quad_estimates, ci_level,
+		  mean_estim, lower_ci, upper_ci);
     
 
 
-      std::ofstream quad_of;
-      if (!quad_outfile.empty()) quad_of.open(quad_outfile.c_str());
-      std::ostream quad_out(quad_outfile.empty() ? std::cout.rdbuf() : quad_of.rdbuf());
-      quad_out << "log_mean" << '\t' << "log_lower_" << ci_level << "ci" 
-	       << '\t' << "log_upper_" << ci_level << "ci" << endl;
-      quad_out << log_mean << '\t' << log_lower_ci << '\t'
-	       << log_upper_ci << endl;
+	std::ofstream quad_of;
+	if (!quad_outfile.empty()) quad_of.open(quad_outfile.c_str());
+	std::ostream quad_out(quad_outfile.empty() ? std::cout.rdbuf() : quad_of.rdbuf());
+	quad_out << "log_mean" << '\t' << "log_lower_" << ci_level << "ci" 
+		 << '\t' << "log_upper_" << ci_level << "ci" << '\t' 
+		 << "mean" << '\t' << "lower_" << ci_level << "ci"
+		 << '\t' << "upper_" << ci_level << "ci" << endl;
+	quad_out << log_mean << '\t' << log_lower_ci << '\t'
+		 << log_upper_ci << '\t' << mean_estim << '\t'
+		 << lower_ci << '\t' << upper_ci << endl;
+      }
     
     /////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////

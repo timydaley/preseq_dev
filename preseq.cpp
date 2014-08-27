@@ -37,6 +37,7 @@
 #include <gsl/gsl_cdf.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_statistics_double.h>
+#include <gsl/gsl_sf_gamma.h>
 
 #include <OptionParser.hpp>
 #include <smithlab_utils.hpp>
@@ -44,13 +45,15 @@
 #include <RNG.hpp>
 #include <smithlab_os.hpp>
 
-#define PRESEQ_VERSION "1.0.1"
+#define PRESEQ_VERSION "2.0.0"
 
 // AS: might not be good to depend on mapped read here
 // TD: if we're including gc_extrap, we need the dependence
 
 #include "continued_fraction.hpp"
 #include "load_data_for_complexity.hpp"
+#include "moment_sequence.hpp"
+
 
 using std::string;
 using std::min;
@@ -60,11 +63,11 @@ using std::cerr;
 using std::max;
 using std::ifstream;
 using std::isfinite;
-
 using std::setw;
 using std::fixed;
 using std::setprecision;
 using std::tr1::unordered_map;
+using std::log;
 
 
 
@@ -133,6 +136,28 @@ vector_median_and_ci(const vector<vector<double> > &bootstrap_estimates,
     lower_ci_lognormal.push_back(lower_ci_estimate);
     upper_ci_lognormal.push_back(upper_ci_estimate);
   }
+}
+
+void
+log_mean(const bool VERBOSE,
+	 const vector<double> &estimates,
+	 const double ci_level,
+	 double &log_mean, 
+	 double &log_lower_ci,
+	 double &log_upper_ci){
+  vector<double> log_estimates(estimates);
+  for(size_t i = 0; i < log_estimates.size(); i++)
+    log_estimates[i] = log(log_estimates[i]);
+
+  log_mean = exp(gsl_stats_mean(&log_estimates[0], 1,
+				log_estimates.size()) );
+
+  double log_std_dev = std::sqrt(gsl_stats_variance(&log_estimates[0], 1, 
+						    log_estimates.size()) );
+
+  const double inv_norm_alpha = gsl_cdf_ugaussian_Qinv((1.0 - ci_level)/2.0);
+  log_lower_ci = exp(log(log_mean) - inv_norm_alpha*log_std_dev);
+  log_upper_ci = exp(log(log_mean) + inv_norm_alpha*log_std_dev);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -214,7 +239,6 @@ check_yield_estimates(const vector<double> &estimates) {
 
 void
 extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
-		 const unsigned long int ran_seed,
                  const size_t bootstraps, const size_t orig_max_terms,
                  const int diagonal, const double bin_step_size,
                  const double max_extrapolation, const size_t max_iter,
@@ -226,7 +250,7 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
   srand(time(0) + getpid());
   gsl_rng_env_setup();
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
-  gsl_rng_set(rng, ran_seed);
+  gsl_rng_set(rng, rand());
 
   double vals_sum = 0.0;
   for(size_t i = 0; i < orig_hist.size(); i++)
@@ -332,7 +356,6 @@ extrap_bootstrap(const bool VERBOSE, const vector<double> &orig_hist,
 
 static bool
 extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
-		       const unsigned long int ran_seed,
                        size_t max_terms, const int diagonal,
                        const double step_size, 
                        const double max_extrapolation,
@@ -342,7 +365,7 @@ extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
   srand(time(0) + getpid());
   gsl_rng_env_setup();
   gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
-  gsl_rng_set(rng, ran_seed);
+  gsl_rng_set(rng, rand());
 
 
   yield_estimate.clear();
@@ -428,6 +451,96 @@ extrap_single_estimate(const bool VERBOSE, vector<double> &hist,
   return true;
 }
 
+bool
+quadrature_bootstraps(const bool VERBOSE,
+		      const bool UPPER_BOUND,
+		      const vector<double> &orig_hist,
+		      const size_t bootstraps,
+		      const size_t num_points,
+		      const size_t max_iter,
+		      const double tolerance,
+		      const double abundance_limit,
+		      vector<double> &quad_estimates){
+  quad_estimates.clear();
+
+  //setup rng
+  srand(time(0) + getpid());
+  gsl_rng_env_setup();
+  gsl_rng *rng = gsl_rng_alloc(gsl_rng_default);
+  gsl_rng_set(rng, rand());
+
+  // hist may be sparse, to speed up bootstrapping
+  // sample only from positive entries
+  vector<size_t> orig_hist_distinct_counts;
+  vector<double> distinct_orig_hist;
+  for (size_t i = 0; i < orig_hist.size(); i++){
+    if (orig_hist[i] > 0) {
+      orig_hist_distinct_counts.push_back(i);
+      distinct_orig_hist.push_back(orig_hist[i]);
+    }
+  }
+
+  // bootstrapping
+  for(size_t iter = 0; iter < max_iter && quad_estimates.size() < bootstraps; ++iter){
+
+    vector<double> hist;
+    resample_hist(rng, orig_hist_distinct_counts, distinct_orig_hist, hist);
+
+    // initialize moments, 0th moment is 1
+    vector<double> bootstrap_moments(1, 1.0);
+    // moments[r] = (r + 1)! n_{r+1} / n_1
+    for(size_t i = 0; i < 2*num_points + 1; i++)
+      bootstrap_moments.push_back(exp(gsl_sf_lnfact(i + 2) 
+				      + log(hist[i + 2])
+				      - log(hist[1])) );
+
+    // estimate 3term recurrence
+    MomentSequence bootstrap_mom_seq(bootstrap_moments);
+
+    vector<double> bootstrap_points, bootstrap_weights;
+    bool QUAD_SUCCESS = false;
+
+    // Gauss-Radau quadrature for upper bound
+    if(UPPER_BOUND)
+      QUAD_SUCCESS = 
+	bootstrap_mom_seq.GaussRadau_quadrature_rules(VERBOSE, num_points,
+						      tolerance, max_iter,
+						      abundance_limit,
+						      bootstrap_points, 
+						      bootstrap_weights);
+    // normal quadrature for lower bound
+    else
+      QUAD_SUCCESS = 
+	bootstrap_mom_seq.Lower_quadrature_rules(VERBOSE, num_points, tolerance,
+						 max_iter, bootstrap_points,
+						 bootstrap_weights);
+
+    // quadrature success with correct number of points
+    if(QUAD_SUCCESS && bootstrap_points.size() == num_points){
+
+      // reweight points if necessary
+      const double weights_sum = accumulate(bootstrap_weights.begin(), 
+					    bootstrap_weights.end(), 0.0);
+      if(weights_sum != 1.0){
+	for(size_t i = 0; i < bootstrap_weights.size(); i++)
+	  bootstrap_weights[i] = bootstrap_weights[i]/weights_sum;
+      }
+
+      // compute integral
+      double estimated_integral = 0.0;
+      for(size_t i = 0; i < bootstrap_weights.size(); i++)
+	estimated_integral += hist[1]*bootstrap_weights[i]/bootstrap_points[i];
+
+      quad_estimates.push_back(estimated_integral);
+    }
+  }
+
+  if(quad_estimates.size() == bootstraps)
+    return true;
+
+  return false;
+}
+
 static double
 GoodToulmin2xExtrap(const vector<double> &counts_hist){
   double two_fold_extrap = 0.0;
@@ -507,8 +620,6 @@ lc_extrap(const int argc, const char **argv) {
     int diagonal = 0;
     double c_level = 0.95;
     double dupl_level = 0.5;
-    // if ran_seed is not set, set it to random #
-    unsigned long int ran_seed = rand();
       
     /* FLAGS */
     bool VERBOSE = false;
@@ -527,8 +638,6 @@ lc_extrap(const int argc, const char **argv) {
                            "", "<sorted-bed-file>");
     opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
                       false , outfile);
-    opt_parse.add_opt("ran_seed", 'r', "seed to set random number generation",
-		      false, ran_seed);
     opt_parse.add_opt("extrap",'e',"maximum extrapolation "
                       "(default: " + toa(max_extrapolation) + ")",
                       false, max_extrapolation);
@@ -538,7 +647,7 @@ lc_extrap(const int argc, const char **argv) {
     opt_parse.add_opt("bootstraps",'n',"number of bootstraps "
                       "(default: " + toa(bootstraps) + "), ",
                       false, bootstraps);
-    opt_parse.add_opt("cval", 'c', "level for confidence intervals "
+    opt_parse.add_opt("clevel", 'c', "level for confidence intervals "
                       "(default: " + toa(c_level) + ")", false, c_level);
     opt_parse.add_opt("dupl_level",'d', "fraction of duplicate to predict "
                       "(default: " + toa(dupl_level) + ")",
@@ -711,9 +820,8 @@ lc_extrap(const int argc, const char **argv) {
 
     if(SINGLE_ESTIMATE){
       bool SINGLE_ESTIMATE_SUCCESS =
-        extrap_single_estimate(VERBOSE, counts_hist, ran_seed,
-			       orig_max_terms, diagonal, 
-			       step_size, max_extrapolation, 
+        extrap_single_estimate(VERBOSE, counts_hist, orig_max_terms, 
+                               diagonal, step_size, max_extrapolation, 
                                yield_estimates);
       // IF FAILURE, EXIT
       if(!SINGLE_ESTIMATE_SUCCESS)
@@ -742,10 +850,9 @@ lc_extrap(const int argc, const char **argv) {
       const size_t max_iter = 4*bootstraps;
 
       vector<vector <double> > bootstrap_estimates;
-      extrap_bootstrap(VERBOSE, counts_hist, ran_seed,
-		       bootstraps, orig_max_terms,
-                       diagonal, step_size, max_extrapolation, 
-		       max_iter, bootstrap_estimates);
+      extrap_bootstrap(VERBOSE, counts_hist, bootstraps, orig_max_terms,
+                       diagonal, step_size, max_extrapolation, max_iter,
+                       bootstrap_estimates);
 
 
       /////////////////////////////////////////////////////////////////////
@@ -805,9 +912,6 @@ gc_extrap(const int argc, const char **argv) {
     bool NO_SEQUENCE = false;
     double c_level = 0.95;
 
-    // if ran_seed is not set, set it to random #
-    unsigned long int ran_seed = rand();
-
     // ********* GET COMMAND LINE ARGUMENTS  FOR GC EXTRAP **********
     OptionParser opt_parse(strip_path(argv[1]),
                            "", "<sorted-mapped-read-file>");
@@ -816,8 +920,6 @@ gc_extrap(const int argc, const char **argv) {
     opt_parse.add_opt("max_width", 'w', "max fragment length, "
                       "set equal to read length for single end reads",
                       false, max_width);
-    opt_parse.add_opt("ran_seed", 'r', "seed to set random number generation",
-		      false, ran_seed);
     opt_parse.add_opt("bin_size", 'b', "bin size "
                       "(default: " + toa(bin_size) + ")",
                       false, bin_size);
@@ -830,7 +932,7 @@ gc_extrap(const int argc, const char **argv) {
     opt_parse.add_opt("bootstraps",'n',"number of bootstraps "
                       "(default: " + toa(bootstraps) + "), ",
                       false, bootstraps);
-    opt_parse.add_opt("cval", 'c', "level for confidence intervals "
+    opt_parse.add_opt("clevel", 'c', "level for confidence intervals "
                       "(default: " + toa(c_level) + ")", false, c_level);
     opt_parse.add_opt("terms",'x',"maximum number of terms",
                       false, orig_max_terms);
@@ -962,8 +1064,7 @@ gc_extrap(const int argc, const char **argv) {
     if (SINGLE_ESTIMATE) {
       
       bool SINGLE_ESTIMATE_SUCCESS =
-        extrap_single_estimate(VERBOSE, coverage_hist, ran_seed,
-			       orig_max_terms, diagonal,
+        extrap_single_estimate(VERBOSE, coverage_hist, orig_max_terms, diagonal,
                                bin_step_size, max_extrapolation/bin_size,
                                coverage_estimates);
       
@@ -995,10 +1096,8 @@ gc_extrap(const int argc, const char **argv) {
       const size_t max_iter = 4*bootstraps;
       
       vector<vector <double> > bootstrap_estimates;
-      extrap_bootstrap(VERBOSE, coverage_hist, ran_seed,
-		       bootstraps, orig_max_terms,
-                       diagonal, bin_step_size, 
-		       max_extrapolation/bin_size,
+      extrap_bootstrap(VERBOSE, coverage_hist, bootstraps, orig_max_terms,
+                       diagonal, bin_step_size, max_extrapolation/bin_size,
                        max_iter, bootstrap_estimates);
       
       
@@ -1055,9 +1154,6 @@ c_curve(const int argc, const char **argv) {
 
     size_t upper_limit = 0;
     double step_size = 1e6;
-
-    // if ran_seed is not set, set it to random #
-    unsigned long int ran_seed = rand();
   
 #ifdef HAVE_SAMTOOLS
     bool BAM_FORMAT_INPUT = false;
@@ -1069,8 +1165,6 @@ c_curve(const int argc, const char **argv) {
                            "", "<sorted-bed-file>");
     opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
                       false , outfile);
-    opt_parse.add_opt("ran_seed", 'r', "seed to set random number generation",
-		      false, ran_seed);
     opt_parse.add_opt("step",'s',"step size in extrapolations "
                       "(default: " + toa(step_size) + ")",
                       false, step_size);
@@ -1118,7 +1212,7 @@ c_curve(const int argc, const char **argv) {
     gsl_rng_env_setup();
     gsl_rng *rng = gsl_rng_alloc(gsl_rng_default); // use default type
     srand(time(0) + getpid()); //give the random fxn a new seed
-    gsl_rng_set(rng, ran_seed); //initialize random number generator with the seed
+    gsl_rng_set(rng, rand()); //initialize random number generator with the seed
 
     vector<double> counts_hist;
     size_t n_reads = 0;
@@ -1237,6 +1331,212 @@ c_curve(const int argc, const char **argv) {
   return EXIT_SUCCESS;
 }
 
+static int
+bound_unobs(const int argc, const char **argv) {
+
+  try{
+
+    bool VERBOSE = false;
+    bool PAIRED_END = false;
+    bool HIST_INPUT = false;
+    bool VALS_INPUT = false;
+
+    string outfile;
+
+#ifdef HAVE_SAMTOOLS
+    bool BAM_FORMAT_INPUT = false;
+    size_t MAX_SEGMENT_LENGTH = 5000;
+#endif
+
+    size_t num_points = 5;
+    double tolerance = 1e-20;
+    size_t max_iter = 0;
+    size_t bootstraps = 100;
+    double c_level = 0.95;
+    double abundance_limit = 1e-5;
+
+    bool UPPER_BOUND = false;
+
+    /********** GET COMMAND LINE ARGUMENTS  FOR C_CURVE ***********/
+    OptionParser opt_parse(strip_path(argv[1]),
+                           "", "<sorted-bed-file>");
+    opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
+                      false , outfile);
+    opt_parse.add_opt("UPPER_BOUND", 'U', "compute upper bound, default "
+		      "is lower bound", false, UPPER_BOUND);
+    opt_parse.add_opt("num_points",'p',"number of points in quadrature estimates "
+                      "(default: " + toa(num_points) + ")",
+                      false, num_points);
+    opt_parse.add_opt("tolerance", 't', "numerical tolerance "
+                      "(default: " + toa(tolerance) + ")",
+		      false, tolerance);
+    opt_parse.add_opt("bootstraps", 'n', "number of bootstraps "
+                      "(default: " + toa(bootstraps) + ")",
+		      false, bootstraps);
+    opt_parse.add_opt("clevel", 'c', "level for confidence intervals "
+                      "(default: " + toa(c_level) + ")", false, c_level);
+    opt_parse.add_opt("verbose", 'v', "print more information",
+                      false, VERBOSE);
+    opt_parse.add_opt("pe", 'P', "input is paired end read file",
+                      false, PAIRED_END);
+    opt_parse.add_opt("hist", 'H',
+                      "input is a text file containing the observed histogram",
+                      false, HIST_INPUT);
+    opt_parse.add_opt("vals", 'V',
+                      "input is a text file containing only the observed counts",
+                      false, VALS_INPUT);
+#ifdef HAVE_SAMTOOLS
+    opt_parse.add_opt("bam", 'B', "input is in BAM format",
+                      false, BAM_FORMAT_INPUT);
+    opt_parse.add_opt("seg_len", 'l', "maximum segment length when merging "
+                      "paired end bam reads (default: "
+                      + toa(MAX_SEGMENT_LENGTH) + ")",
+                      false, MAX_SEGMENT_LENGTH);
+#endif
+
+    vector<string> leftover_args;
+    opt_parse.parse(argc-1, argv+1, leftover_args);
+    if (argc == 2 || opt_parse.help_requested()) {
+      cerr << opt_parse.help_message() << endl;
+      return EXIT_SUCCESS;
+    }
+    if (opt_parse.about_requested()) {
+      cerr << opt_parse.about_message() << endl;
+      return EXIT_SUCCESS;
+    }
+    if (opt_parse.option_missing()) {
+      cerr << opt_parse.option_missing_message() << endl;
+      return EXIT_SUCCESS;
+    }
+    if (leftover_args.empty()) {
+      cerr << opt_parse.help_message() << endl;
+      return EXIT_SUCCESS;
+    }
+    const string input_file_name = leftover_args.front();
+    // ****************************************************************
+
+    vector<double> counts_hist;
+    size_t n_obs = 0;
+
+    // LOAD VALUES
+    if(HIST_INPUT){
+      if(VERBOSE)
+        cerr << "HIST_INPUT" << endl;
+      n_obs = load_histogram(input_file_name, counts_hist);
+    }
+    else if(VALS_INPUT){
+      if(VERBOSE)
+        cerr << "VALS_INPUT" << endl;
+      n_obs = load_counts(input_file_name, counts_hist);
+    }
+#ifdef HAVE_SAMTOOLS
+    else if (BAM_FORMAT_INPUT && PAIRED_END){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BAM_INPUT" << endl;
+      const size_t MAX_READS_TO_HOLD = 5000000;
+      size_t n_paired = 0;
+      size_t n_mates = 0;
+      n_obs = load_counts_BAM_pe(VERBOSE, input_file_name, 
+                                   MAX_SEGMENT_LENGTH, 
+                                   MAX_READS_TO_HOLD, n_paired, 
+                                   n_mates, counts_hist);
+      if(VERBOSE){
+        cerr << "MERGED PAIRED END READS = " << n_paired << endl;
+        cerr << "MATES PROCESSED = " << n_mates << endl;
+      }
+    }
+    else if(BAM_FORMAT_INPUT){
+      if(VERBOSE)
+        cerr << "BAM_INPUT" << endl;
+      n_obs = load_counts_BAM_se(input_file_name, counts_hist);
+    }
+#endif
+    else if(PAIRED_END){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BED_INPUT" << endl;
+      n_obs = load_counts_BED_pe(input_file_name, counts_hist);
+    }
+    else{ // default is single end bed file
+      if(VERBOSE)
+        cerr << "BED_INPUT" << endl;
+      n_obs = load_counts_BED_se(input_file_name, counts_hist);
+    }
+
+    const double distinct_obs = accumulate(counts_hist.begin(), 
+					   counts_hist.end(), 0.0);
+
+    if (VERBOSE)
+      cerr << "TOTAL OBSERVATIONS     = " << n_obs << endl
+           << "DISTINCT OBSERVATIONS  = " << distinct_obs << endl
+           << "MAX COUNT              = " << counts_hist.size() - 1 << endl;
+
+      // OUTPUT THE ORIGINAL HISTOGRAM
+    cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
+    for (size_t i = 0; i < counts_hist.size(); i++)
+      if (counts_hist[i] > 0)
+	cerr << i << '\t' << setprecision(16) << counts_hist[i] << endl;
+
+
+    vector<double> measure_moments;
+    // mu_r = (r + 1)! n_{r+1} / n_1
+    size_t indx = 1;
+    while(counts_hist[indx] > 0  && indx <= counts_hist.size()){
+      measure_moments.push_back(exp(gsl_sf_lnfact(indx)
+				    + log(counts_hist[indx])
+				    - log(counts_hist[1])));
+      if(!std::isfinite(measure_moments.back())){
+	measure_moments.pop_back();
+	break;
+      }
+      indx++;
+    }
+    
+    if(VERBOSE){
+      cerr << "OBSERVED MOMENTS" << endl;
+      for(size_t i = 0; i < measure_moments.size(); i++)
+	cerr << std::setprecision(16) << measure_moments[i] << endl;  
+    }
+
+    // set max_iter if it's not set by user
+    if(max_iter == 0)
+      max_iter = 100*bootstraps;
+
+    vector<double> quad_estimates;
+    quadrature_bootstraps(VERBOSE, UPPER_BOUND, counts_hist,
+			  bootstraps, num_points, max_iter,
+			  tolerance, abundance_limit, quad_estimates);
+
+    double log_mean_estimate, log_lower_ci, log_upper_ci;
+    log_mean(VERBOSE, quad_estimates, c_level, log_mean_estimate, 
+	     log_lower_ci, log_upper_ci);
+
+    std::ofstream of;
+    if (!outfile.empty()) of.open(outfile.c_str());
+    std::ostream out(outfile.empty() ? std::cout.rdbuf() : of.rdbuf());
+
+    out << "quadrature_" << num_points << "point_estimate" << '\t'
+	<< "lower_" << c_level << "CI" <<  '\t'
+	<< "upper_" << c_level << "CI" << endl;
+
+    out.setf(std::ios_base::fixed, std::ios_base::floatfield);
+    out.precision(1);
+
+    out << log_mean_estimate << '\t' << log_lower_ci << '\t'
+	<< log_upper_ci << endl;
+
+
+  }
+  catch (SMITHLABException &e) {
+    cerr << "ERROR:\t" << e.what() << endl;
+    return EXIT_FAILURE;
+  }
+  catch (std::bad_alloc &ba) {
+    cerr << "ERROR: could not allocate memory" << endl;
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
 
 
 int
@@ -1246,10 +1546,11 @@ main(const int argc, const char **argv) {
     USAGE_MESSAGE("preseq:  a program for analyzing library complexity\n"
                   "Version: " + toa(PRESEQ_VERSION) + "\n\n"
                   "Usage:   preseq <command> [OPTIONS]\n\n"
-                  "<command>: c_curve    generate complexity curve for a library\n"
-                  "           lc_extrap  predict the yield for future experiments\n"
-                  "           gc_extrap  predict genome coverage low input\n"
-                  "                      sequencing experiments\n"
+                  "<command>: c_curve      generate complexity curve for a library\n"
+                  "           lc_extrap    predict the yield for future experiments\n"
+                  "           gc_extrap    predict genome coverage low input\n"
+                  "                        sequencing experiments\n"
+		  "           bound_unobs  bounds the number of unobserved\n" 
                   );
   
   if (argc < 2)
@@ -1269,6 +1570,11 @@ main(const int argc, const char **argv) {
     
     return gc_extrap(argc, argv);
     
+  }
+  else if (strcmp(argv[1], "bound_unobs") == 0) {
+
+      return bound_unobs(argc, argv);
+
   }
   else {
     cerr << "unrecognized command: " << argv[1] << endl

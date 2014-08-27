@@ -206,6 +206,7 @@ static void empty_pq(MappedRead &prev_mr,
     //	       cerr << "outputting from queue : " << read_pq.top() << endl;
   read_pq.pop();
 
+  /*
     // check if reads are sorted
   if (curr_mr.r.same_chrom(prev_mr.r) &&
       curr_mr.r.get_start() < prev_mr.r.get_start()
@@ -215,6 +216,7 @@ static void empty_pq(MappedRead &prev_mr,
     cerr << "Increase seg_len if in paired end mode" << endl;
     throw SMITHLABException("reads unsorted in " + input_file_name);
   }
+  */
 
   out << curr_mr << endl;
 
@@ -234,9 +236,8 @@ main(int argc, const char **argv) {
     
     /****************** COMMAND LINE OPTIONS ********************/
     OptionParser opt_parse(strip_path(argv[0]),
-                           "Convert the SAM/BAM output from bsmap, "
-                           "bismark or bs_seeker to MethPipe mapped read format",
-                           "sam/bam_file");
+                           "Convert the SAM/BAM output from "
+                           "mapped read format to sam/bam_file");
     opt_parse.add_opt("output", 'o', "Name of output file", 
                       false, outfile);
     opt_parse.add_opt("suff", 's', "read name suffix length (default: 0)",

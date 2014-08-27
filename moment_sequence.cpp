@@ -471,12 +471,12 @@ check_positivity(const vector<double> &points){
 
 
 bool
-MomentSequence::QR_quadrature_rules(const bool VERBOSE,
-				    const size_t n_points,
-				    const double tol, 
-				    const size_t max_iter,
-				    vector<double> &points,
-				    vector<double> &weights){
+MomentSequence::Lower_quadrature_rules(const bool VERBOSE,
+				       const size_t n_points,
+				       const double tol, 
+				       const size_t max_iter,
+				       vector<double> &points,
+				       vector<double> &weights){
 
   // make sure that points.size() will be less than n_points
   vector<double> a(alpha);

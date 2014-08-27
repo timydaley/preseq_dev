@@ -78,9 +78,11 @@ $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
 
 mincount_c_curve: load_data_for_complexity.o
 
-saturation_extrap mincount_extrap preseq: continued_fraction.o load_data_for_complexity.o
+saturation_extrap mincount_extrap: continued_fraction.o load_data_for_complexity.o
 
 test_quad_bootstrap bootstrap_3term test_quad_3term test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
+
+preseq: continued_fraction.o load_data_for_complexity.o moment_sequence.o newtons_method.o ZTNB.o
 
 gc_extrap: continued_fraction.o
 
