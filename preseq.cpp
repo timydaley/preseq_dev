@@ -1353,7 +1353,7 @@ bound_unobs(const int argc, const char **argv) {
     size_t max_iter = 0;
     size_t bootstraps = 100;
     double c_level = 0.95;
-    double abundance_limit = 1e-5;
+    double abundance_limit = 1e-2;
 
     bool UPPER_BOUND = false;
 
@@ -1364,6 +1364,9 @@ bound_unobs(const int argc, const char **argv) {
                       false , outfile);
     opt_parse.add_opt("UPPER_BOUND", 'U', "compute upper bound, default "
 		      "is lower bound", false, UPPER_BOUND);
+    opt_parse.add_opt("abund_lim", 'a', "lower limit on abundance when computing "
+		      "upper bounds (default: " + toa(abundance_limit) + ")",
+		      false, abundance_limit);
     opt_parse.add_opt("num_points",'p',"number of points in quadrature estimates "
                       "(default: " + toa(num_points) + ")",
                       false, num_points);
@@ -1465,17 +1468,6 @@ bound_unobs(const int argc, const char **argv) {
     const double distinct_obs = accumulate(counts_hist.begin(), 
 					   counts_hist.end(), 0.0);
 
-    if (VERBOSE)
-      cerr << "TOTAL OBSERVATIONS     = " << n_obs << endl
-           << "DISTINCT OBSERVATIONS  = " << distinct_obs << endl
-           << "MAX COUNT              = " << counts_hist.size() - 1 << endl;
-
-      // OUTPUT THE ORIGINAL HISTOGRAM
-    cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
-    for (size_t i = 0; i < counts_hist.size(); i++)
-      if (counts_hist[i] > 0)
-	cerr << i << '\t' << setprecision(16) << counts_hist[i] << endl;
-
 
     vector<double> measure_moments;
     // mu_r = (r + 1)! n_{r+1} / n_1
@@ -1491,7 +1483,18 @@ bound_unobs(const int argc, const char **argv) {
       indx++;
     }
     
-    if(VERBOSE){
+
+    if (VERBOSE){
+      cerr << "TOTAL OBSERVATIONS     = " << n_obs << endl
+           << "DISTINCT OBSERVATIONS  = " << distinct_obs << endl
+           << "MAX COUNT              = " << counts_hist.size() - 1 << endl;
+
+      // OUTPUT THE ORIGINAL HISTOGRAM
+      cerr << "OBSERVED COUNTS (" << counts_hist.size() << ")" << endl;
+      for (size_t i = 0; i < counts_hist.size(); i++)
+	if (counts_hist[i] > 0)
+	  cerr << i << '\t' << setprecision(16) << counts_hist[i] << endl;
+
       cerr << "OBSERVED MOMENTS" << endl;
       for(size_t i = 0; i < measure_moments.size(); i++)
 	cerr << std::setprecision(16) << measure_moments[i] << endl;  
