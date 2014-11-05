@@ -480,11 +480,21 @@ quadrature_bootstraps(const bool VERBOSE,
     }
   }
 
+
+  if(VERBOSE && UPPER_BOUND)
+    cerr << "UPPER BOUND" << endl;
+
   // bootstrapping
   for(size_t iter = 0; iter < max_iter && quad_estimates.size() < bootstraps; ++iter){
 
     vector<double> hist;
     resample_hist(rng, orig_hist_distinct_counts, distinct_orig_hist, hist);
+
+    double total_counts = 0;
+    for(size_t i = 0; i < hist.size(); i++)
+      total_counts += i*hist[i];
+
+    const double sampled_distinct = accumulate(hist.begin(), hist.end(), 0.0);
 
     // initialize moments, 0th moment is 1
     vector<double> bootstrap_moments(1, 1.0);
@@ -501,15 +511,19 @@ quadrature_bootstraps(const bool VERBOSE,
     bool QUAD_SUCCESS = false;
 
     // Gauss-Radau quadrature for upper bound
-    if(UPPER_BOUND)
+    if(UPPER_BOUND){
+      double lower_limit = total_counts*abundance_limit;
+      if(VERBOSE)
+	cerr << "lower limit = " << lower_limit << endl;
       QUAD_SUCCESS = 
 	bootstrap_mom_seq.GaussRadau_quadrature_rules(VERBOSE, num_points,
 						      tolerance, max_iter,
-						      abundance_limit,
+						      lower_limit,
 						      bootstrap_points, 
 						      bootstrap_weights);
+    }
     // normal quadrature for lower bound
-    else
+    else // LOWER_BOUND
       QUAD_SUCCESS = 
 	bootstrap_mom_seq.Lower_quadrature_rules(VERBOSE, num_points, tolerance,
 						 max_iter, bootstrap_points,
@@ -531,7 +545,7 @@ quadrature_bootstraps(const bool VERBOSE,
       for(size_t i = 0; i < bootstrap_weights.size(); i++)
 	estimated_integral += hist[1]*bootstrap_weights[i]/bootstrap_points[i];
 
-      quad_estimates.push_back(estimated_integral);
+      quad_estimates.push_back(sampled_distinct + estimated_integral);
     }
   }
 
@@ -918,7 +932,8 @@ gc_extrap(const int argc, const char **argv) {
     opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
                       false , outfile);
     opt_parse.add_opt("max_width", 'w', "max fragment length, "
-                      "set equal to read length for single end reads",
+                      "set equal to read length for single end reads "
+		      "(default: " + toa(max_width) + ")",
                       false, max_width);
     opt_parse.add_opt("bin_size", 'b', "bin size "
                       "(default: " + toa(bin_size) + ")",
@@ -1331,8 +1346,13 @@ c_curve(const int argc, const char **argv) {
   return EXIT_SUCCESS;
 }
 
+
+/////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////
+// BOUND_UNOBS: bounding n_0
+
 static int
-bound_unobs(const int argc, const char **argv) {
+bound_pop(const int argc, const char **argv) {
 
   try{
 
@@ -1353,7 +1373,7 @@ bound_unobs(const int argc, const char **argv) {
     size_t max_iter = 0;
     size_t bootstraps = 100;
     double c_level = 0.95;
-    double abundance_limit = 1e-2;
+    double abundance_limit = 1e-8;
 
     bool UPPER_BOUND = false;
 
@@ -1505,13 +1525,17 @@ bound_unobs(const int argc, const char **argv) {
       max_iter = 100*bootstraps;
 
     vector<double> quad_estimates;
-    quadrature_bootstraps(VERBOSE, UPPER_BOUND, counts_hist,
-			  bootstraps, num_points, max_iter,
-			  tolerance, abundance_limit, quad_estimates);
+    bool QUAD_BOOTSTRAP_SUCCESS = 
+      quadrature_bootstraps(VERBOSE, UPPER_BOUND, counts_hist,
+			    bootstraps, num_points, max_iter,
+			    tolerance, abundance_limit, quad_estimates);
 
-    double log_mean_estimate, log_lower_ci, log_upper_ci;
-    log_mean(VERBOSE, quad_estimates, c_level, log_mean_estimate, 
-	     log_lower_ci, log_upper_ci);
+    double log_mean_estimate = 0.0;
+    double log_lower_ci = 0.0;
+    double log_upper_ci = 0.0;
+    if(QUAD_BOOTSTRAP_SUCCESS)
+      log_mean(VERBOSE, quad_estimates, c_level, log_mean_estimate, 
+	       log_lower_ci, log_upper_ci);
 
     std::ofstream of;
     if (!outfile.empty()) of.open(outfile.c_str());
@@ -1553,7 +1577,7 @@ main(const int argc, const char **argv) {
                   "           lc_extrap    predict the yield for future experiments\n"
                   "           gc_extrap    predict genome coverage low input\n"
                   "                        sequencing experiments\n"
-		  "           bound_unobs  bounds the number of unobserved\n" 
+		  "           bound_pop  bounds the number of unobserved\n" 
                   );
   
   if (argc < 2)
@@ -1574,9 +1598,9 @@ main(const int argc, const char **argv) {
     return gc_extrap(argc, argv);
     
   }
-  else if (strcmp(argv[1], "bound_unobs") == 0) {
+  else if (strcmp(argv[1], "bound_pop") == 0) {
 
-      return bound_unobs(argc, argv);
+      return bound_pop(argc, argv);
 
   }
   else {

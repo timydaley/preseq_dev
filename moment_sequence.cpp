@@ -718,6 +718,7 @@ MomentSequence::GaussRadau_quadrature_rules(const bool VERBOSE,
   if(VERBOSE)
     cerr << "p_n-1(t) = " << eval_n_minus1th_orth_poly << endl;
 
+  
   a.push_back(fixed_left_end_point - 
 	      beta.back()*beta.back()*eval_n_minus1th_orth_poly/eval_nth_orth_poly);
   // use Jacobi-Radau matrix for QR, see eq 4.7 in Gautschi (2006)
