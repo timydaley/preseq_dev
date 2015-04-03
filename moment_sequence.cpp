@@ -46,12 +46,12 @@ using std::setprecision;
 // test Hankel moment matrix
 // ensure moment sequence is positive definite
 // truncate moment sequence to ensure pos def
-bool
-MomentSequence::ensure_pos_def_mom_seq(vector <double> &moments,
-				       const double tolerance){
+size_t
+ensure_pos_def_mom_seq(vector <double> &moments,
+		       const double tolerance){
   size_t hankel_dim = 2;
   if(moments.size() >= 2*hankel_dim - 1){
-    return false;
+    return 1;
   }
 
   bool ACCEPT_HANKEL = true;
@@ -79,11 +79,11 @@ MomentSequence::ensure_pos_def_mom_seq(vector <double> &moments,
       ACCEPT_HANKEL = false;
       hankel_dim--;
       moments.resize(2*hankel_dim - 1);
-      return true;
+      return hankel_dim;
     }
   }
 
-  return true;
+  return hankel_dim;
 }
 
 

@@ -33,7 +33,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap test_quad_bootstrap
+PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap test_quadrature
 ifdef SAMTOOLS_DIR
 PROGS += bam2mr
 endif
@@ -80,7 +80,9 @@ mincount_c_curve: load_data_for_complexity.o
 
 saturation_extrap mincount_extrap: continued_fraction.o load_data_for_complexity.o
 
-test_quad_bootstrap bootstrap_3term test_quad_3term test_quadrature: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
+test_quadrature: moment_sequence.o load_data_for_complexity.o
+
+test_quad_bootstrap bootstrap_3term test_quad_3term: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
 
 preseq: continued_fraction.o load_data_for_complexity.o moment_sequence.o newtons_method.o ZTNB.o
 
@@ -89,7 +91,7 @@ gc_extrap: continued_fraction.o
 saturation_extrap: continued_fraction.o
 
 ifdef SAMTOOLS_DIR
-mincount_c_curve mincount_extrap saturation_extrap bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
+test_quadrature mincount_c_curve mincount_extrap saturation_extrap bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
         $(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
         faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
 endif
