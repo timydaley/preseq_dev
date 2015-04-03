@@ -42,6 +42,50 @@ using std::cerr;
 using std::setprecision;
 
 
+/////////////////////////////////////////////////////
+// test Hankel moment matrix
+// ensure moment sequence is positive definite
+// truncate moment sequence to ensure pos def
+bool
+MomentSequence::ensure_pos_def_mom_seq(vector <double> &moments,
+				       const double tolerance){
+  size_t hankel_dim = 2;
+  if(moments.size() >= 2*hankel_dim - 1){
+    return false;
+  }
+
+  bool ACCEPT_HANKEL = true;
+  while(ACCEPT_HANKEL && 
+	(2*hankel_dim - 1 < moments.size())){
+    gsl_matrix *hankel_matrix = gsl_matrix_alloc(hankel_dim, 
+						 hankel_dim);
+    for(size_t col_indx = 0; col_indx < hankel_dim; col_indx++){
+      for(size_t row_indx = 0; row_indx < hankel_dim; row_indx++){
+	gsl_matrix_set(hankel_matrix, col_indx, row_indx, 
+		       moments[col_indx + row_indx]);
+      }
+    }
+
+    int s;
+    gsl_permutation *perm = gsl_permutation_alloc(4);
+    gsl_linalg_LU_decomp(hankel_matrix, perm, &s);
+    double hankel_matrix_det = gsl_linalg_LU_det(hankel_matrix, s);
+
+    if(hankel_matrix_det > tolerance){
+      ACCEPT_HANKEL = true;
+      hankel_dim++;
+    }
+    else{
+      ACCEPT_HANKEL = false;
+      hankel_dim--;
+      moments.resize(2*hankel_dim - 1);
+      return true;
+    }
+  }
+
+  return true;
+}
+
 
 /////////////////////////////////////////////////////
 // 3 term relations

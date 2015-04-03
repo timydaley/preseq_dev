@@ -33,6 +33,11 @@ struct MomentSequence {
 		 const std::vector<double> &b):
     alpha(a), beta(b) {};
 
+  // test Hankel moment matrix to ensure the moment sequence
+  // is positive definite
+  bool ensure_pos_def_mom_seq(std::vector<double> &moments,
+			      const double tolerance);
+
   // Estimate 3-term recurrence
   // these will be removed from the header when they are tested
   void gw_three_term_calc(const bool VERBOSE, const size_t n_points);
