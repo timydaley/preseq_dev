@@ -90,11 +90,11 @@ main(const int argc, const char **argv) {
                            "", "<sorted-bed-file>");
     opt_parse.add_opt("output", 'o', "yield output file (default: stdout)",
                       false , outfile);
-    opt_parse.add_opt("UPPER_BOUND", 'U', "compute upper bound, default "
-		      "is lower bound", false, UPPER_BOUND);
-    opt_parse.add_opt("abund_lim", 'a', "lower limit on abundance when computing "
-		      "upper bounds (default: " + toa(abundance_limit) + ")",
-		      false, abundance_limit);
+    //   opt_parse.add_opt("UPPER_BOUND", 'U', "compute upper bound, default "
+    //		      "is lower bound", false, UPPER_BOUND);
+    //    opt_parse.add_opt("abund_lim", 'a', "lower limit on abundance when computing "
+    //		      "upper bounds (default: " + toa(abundance_limit) + ")",
+    //		      false, abundance_limit);
     opt_parse.add_opt("max_num_points",'p',"maximum number of points in quadrature "
                       "estimates (default: " + toa(max_num_points) + ")",
                       false, max_num_points);
