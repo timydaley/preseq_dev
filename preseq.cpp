@@ -47,9 +47,6 @@
 
 #define PRESEQ_VERSION "2.0.0"
 
-// AS: might not be good to depend on mapped read here
-// TD: if we're including gc_extrap, we need the dependence
-
 #include "continued_fraction.hpp"
 #include "load_data_for_complexity.hpp"
 #include "moment_sequence.hpp"

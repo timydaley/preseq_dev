@@ -48,9 +48,14 @@ using std::setprecision;
 // truncate moment sequence to ensure pos def
 size_t
 ensure_pos_def_mom_seq(vector <double> &moments,
-		       const double tolerance){
+		       const double tolerance,
+		       const bool VERBOSE){
+  if(VERBOSE)
+    cerr << "moments.size = " << moments.size() << endl;
+
   size_t hankel_dim = 2;
-  if(moments.size() >= 2*hankel_dim - 1){
+  if(moments.size() < 2*hankel_dim){
+    cerr << "too few moments" << endl;
     return 1;
   }
 
@@ -65,25 +70,43 @@ ensure_pos_def_mom_seq(vector <double> &moments,
 		       moments[col_indx + row_indx]);
       }
     }
-
     int s;
-    gsl_permutation *perm = gsl_permutation_alloc(4);
+    gsl_permutation *perm = gsl_permutation_alloc(hankel_dim);
     gsl_linalg_LU_decomp(hankel_matrix, perm, &s);
     double hankel_matrix_det = gsl_linalg_LU_det(hankel_matrix, s);
 
-    if(hankel_matrix_det > tolerance){
+    gsl_matrix *shifted_hankel_matrix = gsl_matrix_alloc(hankel_dim, 
+						 hankel_dim);
+    for(size_t col_indx = 0; col_indx < hankel_dim; col_indx++){
+      for(size_t row_indx = 0; row_indx < hankel_dim; row_indx++){
+	gsl_matrix_set(shifted_hankel_matrix, col_indx, row_indx, 
+		       moments[col_indx + row_indx + 1]);
+      }
+    }
+    gsl_permutation *s_perm = gsl_permutation_alloc(hankel_dim);
+    gsl_linalg_LU_decomp(shifted_hankel_matrix, s_perm, &s);
+    double shifted_hankel_matrix_det = gsl_linalg_LU_det(shifted_hankel_matrix, s);
+
+    if(VERBOSE){
+      cerr << "dim = " << hankel_dim << endl;
+      cerr << "hankel det = " << hankel_matrix_det << endl;
+      cerr << "shifted hankel det = " << shifted_hankel_matrix_det << endl;
+    }
+
+    if(hankel_matrix_det > tolerance &&
+       shifted_hankel_matrix_det > tolerance){
       ACCEPT_HANKEL = true;
       hankel_dim++;
     }
     else{
       ACCEPT_HANKEL = false;
       hankel_dim--;
-      moments.resize(2*hankel_dim - 1);
+      moments.resize(2*hankel_dim);
       return hankel_dim;
     }
   }
 
-  return hankel_dim;
+  return hankel_dim - 1;
 }
 
 

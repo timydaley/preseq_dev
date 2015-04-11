@@ -26,7 +26,8 @@
 // test Hankel moment matrix to ensure the moment sequence
 // is positive definite
 size_t ensure_pos_def_mom_seq(std::vector<double> &moments,
-			      const double tolerance);
+			      const double tolerance,
+			      const bool VERBOSE);
 
 struct MomentSequence {
 
