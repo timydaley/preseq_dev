@@ -642,6 +642,7 @@ lc_extrap(const int argc, const char **argv) {
 #ifdef HAVE_SAMTOOLS
     bool BAM_FORMAT_INPUT = false;
     size_t MAX_SEGMENT_LENGTH = 5000;
+    bool STRICT_PE = false;
 #endif
       
     /********** GET COMMAND LINE ARGUMENTS  FOR LC EXTRAP ***********/
@@ -674,6 +675,8 @@ lc_extrap(const int argc, const char **argv) {
                       "paired end bam reads (default: "
                       + toa(MAX_SEGMENT_LENGTH) + ")",
                       false, MAX_SEGMENT_LENGTH);
+    opt_parse.add_opt("strict_pe", 'S', "consider only concordantly mapped reads from input",
+		      false, STRICT_PE);
 #endif
     opt_parse.add_opt("pe", 'P', "input is paired end read file",
                       false, PAIRED_END);
@@ -724,6 +727,20 @@ lc_extrap(const int argc, const char **argv) {
       n_reads = load_counts(input_file_name, counts_hist);
     }
 #ifdef HAVE_SAMTOOLS
+    else if (BAM_FORMAT_INPUT && PAIRED_END && STRICT_PE){
+      if(VERBOSE)
+        cerr << "PAIRED_END_BAM_INPUT" << endl;
+      const size_t MAX_READS_TO_HOLD = 5000000;
+      size_t n_paired = 0;
+      n_reads = load_counts_BAM_concordant_pe(VERBOSE, input_file_name, 
+                                   MAX_SEGMENT_LENGTH, 
+                                   MAX_READS_TO_HOLD, n_paired, 
+                                   counts_hist);
+      if(VERBOSE){
+        cerr << "MERGED PAIRED END READS = " << n_paired << endl;
+	//   cerr << "MATES PROCESSED = " << n_mates << endl;
+      }
+    }
     else if (BAM_FORMAT_INPUT && PAIRED_END){
       if(VERBOSE)
         cerr << "PAIRED_END_BAM_INPUT" << endl;

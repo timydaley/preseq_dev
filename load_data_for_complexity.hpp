@@ -61,6 +61,14 @@ load_counts_BAM_pe(const bool VERBOSE,
                    size_t &n_paired,
                    size_t &n_mates,
                    std::vector<double> &counts_hist);
+
+size_t
+load_counts_BAM_concordant_pe(const bool VERBOSE,
+			      const std::string  &input_file_name,
+			      const size_t MAX_SEGMENT_LENGTH,
+			      const size_t MAX_READ_TO_HOLD,
+			      size_t &n_paired,
+			      std::vector<double> &counts_hist);
  
 size_t
 load_counts_BAM_se(const std::string &input_file_name, 

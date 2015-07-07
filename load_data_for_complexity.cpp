@@ -487,6 +487,166 @@ load_counts_BAM_pe(const bool VERBOSE,
   return n_reads;
 }
 
+
+size_t
+load_counts_BAM_concordant_pe(const bool VERBOSE,
+			      const string &input_file_name,
+			      const size_t MAX_SEGMENT_LENGTH,
+			      const size_t MAX_READS_TO_HOLD,
+			      size_t &n_paired,
+			      vector<double> &counts_hist) {
+  
+  const string mapper = "general";
+  SAMReader sam_reader(input_file_name, mapper);
+
+  // check sam_reader
+  if(!(sam_reader.is_good()))
+    throw SMITHLABException("problem opening input file " + input_file_name);
+  
+  SAMRecord samr;
+  // resize vals_hist, make sure it starts out empty
+  counts_hist.clear();
+  counts_hist.resize(2, 0.0);
+  size_t current_count = 0;
+  size_t suffix_len = 0;
+  n_paired = 0;
+  //n_mates = 0;
+  size_t n_unpaired = 0;
+  // size_t progress_step = 1000000;
+
+  GenomicRegion prev_gr;
+
+  std::priority_queue<GenomicRegion, vector<GenomicRegion>,
+                      GenomicRegionOrderChecker> read_pq;
+  
+  unordered_map<string, SAMRecord> dangling_mates;
+  
+  while ((sam_reader >> samr, sam_reader.is_good())) {
+    
+    // only convert mapped and primary reads
+    if (samr.is_primary && samr.is_mapped) {
+      //++n_mates;
+      
+      // deal with paired-end stuff
+      if (samr.is_mapping_paired) {
+        
+        const size_t name_len = samr.mr.r.get_name().size() - suffix_len;
+        const string read_name(samr.mr.r.get_name().substr(0, name_len));
+        
+        if (dangling_mates.find(read_name) != dangling_mates.end()) {
+          // other end is in dangling mates, merge the two mates
+          if(same_read(suffix_len, samr.mr, 
+                       dangling_mates[read_name].mr)) {
+            if (samr.is_Trich)
+              std::swap(samr, dangling_mates[read_name]);
+            GenomicRegion merged;
+            int len = 0;
+            const bool MERGE_SUCCESS =
+              merge_mates(suffix_len, MAX_SEGMENT_LENGTH,
+                          dangling_mates[read_name].mr.r, samr.mr.r,
+                          merged, len);
+            // merge success!
+            if (MERGE_SUCCESS && len >= 0 &&
+                len <= static_cast<int>(MAX_SEGMENT_LENGTH)) {
+              read_pq.push(merged);
+              ++n_paired;
+            }
+            else {
+              // informative error message!
+              if (VERBOSE) {
+                cerr << "problem merging read "
+                     << read_name << ", splitting read" << endl
+                     << samr.mr << endl
+                     << dangling_mates[read_name].mr << endl
+                     << "To merge, set max segement "
+                     << "length (seg_len) higher." << endl;
+              }
+              //read_pq.push(samr.mr.r);
+              //read_pq.push(dangling_mates[read_name].mr.r);
+              n_unpaired += 2;
+            }
+            dangling_mates.erase(read_name);
+          }
+          else {
+	  //read_pq.push(samr.mr.r);
+	  //read_pq.push(dangling_mates[read_name].mr.r);
+	  //dangling_mates.erase(read_name);
+	    n_unpaired += 2;
+          }
+        }
+        else // didn't find read in dangling_mates, store for later
+          dangling_mates[read_name] = samr;
+      }
+      else {
+      //read_pq.push(samr.mr.r);
+	++n_unpaired;
+      }
+      
+      
+      // dangling mates is too large, flush dangling_mates of reads
+      // on different chroms and too far away
+      if (dangling_mates.size() > MAX_READS_TO_HOLD) {
+        unordered_map<string, SAMRecord> tmp;
+        for (unordered_map<string, SAMRecord>::iterator itr =
+               dangling_mates.begin(); itr != dangling_mates.end(); ++itr) {
+          if (itr->second.mr.r.get_chrom() != samr.mr.r.get_chrom()
+              || (itr->second.mr.r.get_chrom() == samr.mr.r.get_chrom()
+                  && itr->second.mr.r.get_end() 
+                  + MAX_SEGMENT_LENGTH < samr.mr.r.get_start())) {
+            if(itr->second.seg_len >= 0) {
+              //read_pq.push(itr->second.mr.r);
+              ++n_unpaired;
+            }
+          }
+          else tmp[itr->first] = itr->second;
+        }
+        std::swap(tmp, dangling_mates);
+        tmp.clear();
+      }
+
+      
+      // now empty the priority queue
+      if (!(read_pq.empty()) &&
+          is_ready_to_pop(read_pq, samr.mr.r, MAX_SEGMENT_LENGTH)) {
+        //begin emptying priority queue
+        while (!(read_pq.empty()) &&
+               is_ready_to_pop(read_pq, samr.mr.r, MAX_SEGMENT_LENGTH)) {
+          empty_pq(prev_gr, read_pq, input_file_name, counts_hist, current_count);
+        }
+      }
+      
+      // if (VERBOSE && n_mates % progress_step == 0)
+      //cerr << "Processed " << n_mates << " records" << endl;
+      }
+  }
+
+  // empty dangling mates of any excess reads
+  while (!dangling_mates.empty()) {
+    //read_pq.push(dangling_mates.begin()->second.mr.r);
+    dangling_mates.erase(dangling_mates.begin());
+    ++n_unpaired;
+  }
+  
+  //final iteration
+  //while(!read_pq.empty())
+  //empty_pq(prev_gr, read_pq, input_file_name, counts_hist, current_count);
+  
+  if (counts_hist.size() < current_count + 1)
+    counts_hist.resize(current_count + 1, 0.0);
+  
+  ++counts_hist[current_count];
+
+  //assert((read_pq.empty()));
+  
+  size_t n_reads = n_paired;
+  
+  if (VERBOSE)
+    cerr << "paired = " << n_paired << endl
+         << "unpaired = " << n_unpaired << endl;
+
+  return n_reads;
+  }
+
 #endif
 
 
