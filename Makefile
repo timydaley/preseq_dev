@@ -33,7 +33,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap test_quadrature
+PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap test_quadrature harris_newton
 ifdef SAMTOOLS_DIR
 PROGS += bam2mr
 endif
@@ -76,6 +76,8 @@ all: $(PROGS)
 $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
           smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o RNG.o MappedRead.o)
 
+harris_newton: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o load_data_for_complexity.o
+
 mincount_c_curve: load_data_for_complexity.o
 
 saturation_extrap mincount_extrap: continued_fraction.o load_data_for_complexity.o
@@ -91,7 +93,7 @@ gc_extrap: continued_fraction.o
 saturation_extrap: continued_fraction.o
 
 ifdef SAMTOOLS_DIR
-test_quadrature mincount_c_curve mincount_extrap saturation_extrap bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
+harris_newton test_quadrature mincount_c_curve mincount_extrap saturation_extrap bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
         $(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
         faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
 endif

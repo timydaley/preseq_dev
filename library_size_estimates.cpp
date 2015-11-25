@@ -224,12 +224,19 @@ harris_newton_unobserved(const bool VERBOSE,
 
   double lower_bound = 0.0;
   if(CONVERGENCE){
+
+    const double weights_sum = accumulate(root_lambdas.begin(), root_lambdas.end(), 0.0);
+    if(weights_sum != 1.0){
+      for(size_t i = 0; i < root_lambdas.size(); i++)
+	root_lambdas[i] = root_lambdas[i]/weights_sum;
+    }
+
     if(VERBOSE){
-      cerr << "x = ";
+      cerr << "points = ";
       for(size_t i = 0; i < root_xs.size(); i++)
 	cerr << root_xs[i] << ", ";
       cerr << endl;
-      cerr << "lambdas = ";
+      cerr << "weights = ";
       for(size_t i = 0; i < root_lambdas.size(); i++)
 	cerr << root_lambdas[i] << ", ";
       cerr << endl;
@@ -283,7 +290,7 @@ quadrature_unobserved_lower_bound(const bool VERBOSE,
   vector<double> points, weights;
   bool QUAD_SUCCESS = false;
   while(!QUAD_SUCCESS && n_points > 0){
-    QUAD_SUCCESS = mom_seq.QR_quadrature_rules(VERBOSE, n_points, tol, 
+    QUAD_SUCCESS = mom_seq.Lower_quadrature_rules(VERBOSE, n_points, tol, 
 					       max_iter, points, weights);
     --n_points;
   }
@@ -356,7 +363,7 @@ quadrature_unobserved_upper_bound(const bool VERBOSE,
   bool LOWER_BOUND_QUAD_SUCCESS = false;
   while(!LOWER_BOUND_QUAD_SUCCESS && n_lower_bound_points > 0){
     LOWER_BOUND_QUAD_SUCCESS = 
-      mom_seq.QR_quadrature_rules(VERBOSE, n_lower_bound_points, tolerance, 
+      mom_seq.Lower_quadrature_rules(VERBOSE, n_lower_bound_points, tolerance, 
 				  max_iter, lower_bound_points, lower_bound_weights);
     --n_lower_bound_points;
   }
