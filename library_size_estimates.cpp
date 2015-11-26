@@ -200,6 +200,7 @@ harris_newton_unobserved(const bool VERBOSE,
 
     generate_rand_initial(dim, values_sum, initial_lambdas, initial_xs);
 
+    /*
     if(VERBOSE){
       cerr << "initial xs : ";
       for(size_t i = 0; i < initial_xs.size(); i++)
@@ -210,6 +211,7 @@ harris_newton_unobserved(const bool VERBOSE,
 	cerr << initial_lambdas[i] << ", ";
       cerr << endl;
     }
+    */
 
     // one full iteration of my modified newtons method
     CONVERGENCE = 
