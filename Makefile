@@ -22,6 +22,10 @@ ifndef ROOT
 ROOT = $(shell pwd)
 endif
 
+ifndef PREFIX
+PREFIX = $(ROOT)
+endif
+
 ifndef SMITHLAB_CPP
 SMITHLAB_CPP=$(ROOT)/smithlab_cpp/
 endif
@@ -33,7 +37,7 @@ endif
 
 SOURCES = $(wildcard *.cpp)
 OBJECTS = $(patsubst %.cpp,%.o,$(SOURCES))
-PROGS = preseq mincount_extrap mincount_c_curve saturation_extrap test_quadrature harris_newton
+PROGS = preseq
 ifdef SAMTOOLS_DIR
 PROGS += bam2mr
 endif
@@ -76,27 +80,20 @@ all: $(PROGS)
 $(PROGS): $(addprefix $(SMITHLAB_CPP)/, \
           smithlab_os.o smithlab_utils.o GenomicRegion.o OptionParser.o RNG.o MappedRead.o)
 
-harris_newton: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o load_data_for_complexity.o
-
-mincount_c_curve: load_data_for_complexity.o
-
-saturation_extrap mincount_extrap: continued_fraction.o load_data_for_complexity.o
-
-test_quadrature: moment_sequence.o load_data_for_complexity.o
-
-test_quad_bootstrap bootstrap_3term test_quad_3term: moment_sequence.o ZTNB.o library_size_estimates.o newtons_method.o
-
-preseq: continued_fraction.o load_data_for_complexity.o moment_sequence.o newtons_method.o ZTNB.o
-
-gc_extrap: continued_fraction.o
-
-saturation_extrap: continued_fraction.o
+preseq: continued_fraction.o load_data_for_complexity.o moment_sequence.o
 
 ifdef SAMTOOLS_DIR
-harris_newton test_quadrature mincount_c_curve mincount_extrap saturation_extrap bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
+ifdef LIBBAM
+LIBS += -pthread
+bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
+        $(LIBBAM)
+else
+bam2mr preseq: $(addprefix $(SMITHLAB_CPP)/, SAM.o) \
         $(addprefix $(SAMTOOLS_DIR)/, sam.o bam.o bam_import.o bam_pileup.o \
         faidx.o bam_aux.o kstring.o knetfile.o sam_header.o razf.o bgzf.o)
 endif
+endif # SAMTOOLS_DIR
+
 
 %.o: %.cpp %.hpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $< $(INCLUDEARGS)
@@ -105,10 +102,12 @@ endif
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(INCLUDEARGS) $(LIBS)
 
 install: $(PROGS)
-	@mkdir -p $(ROOT)/bin
-	@install -m 755 $(PROGS) $(ROOT)/bin
+	@mkdir -p $(PREFIX)/bin
+	@install -m 755 $(PROGS) $(PREFIX)/bin
 
 clean:
 	@-rm -f $(PROGS) *.o *~
+	@-rm -f $(SMITHLAB_CPP)*.o $(SMITHLAB_CPP)*~
+	@-rm -f $(SAMTOOLS_DIR)*.o $(SAMTOOLS_DIR)*~
 
 .PHONY: clean
